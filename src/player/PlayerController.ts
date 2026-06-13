@@ -35,7 +35,7 @@ export class PlayerController {
   private stanceHoldTime: number = 0;
   private stanceHoldTriggeredProne: boolean = false;
 
-  // --- Health (COD4-style: no bar — screen blood, regen after a quiet spell) ---
+  // --- Health (Fall of Duty-style: no bar — screen blood, regen after a quiet spell) ---
   public static readonly MAX_HEALTH = 100;
   private static readonly REGEN_DELAY = 4.0; // seconds without damage before regen
   private static readonly REGEN_RATE = 40; // hp per second once regenerating
@@ -77,7 +77,7 @@ export class PlayerController {
   // Mouse settings (0.002 base raised 15%)
   public lookSensitivity: number = 0.0023;
 
-  // Collision map boundaries (must match the ShipmentMap walls)
+  // Collision map boundaries (must match the ShipBoxMap walls)
   public static readonly MAP_MIN_X = -15.6;
   public static readonly MAP_MAX_X = 15.6;
   public static readonly MAP_MIN_Z = -15.6;

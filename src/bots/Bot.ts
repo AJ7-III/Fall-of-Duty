@@ -73,7 +73,7 @@ export class Bot {
   public yaw = 0;
   public health = 100;
   public dead = false;
-  public radarTimer = 0; // minimap blip lingers ~2s after firing (COD radar rule)
+  public radarTimer = 0; // minimap blip lingers ~2s after firing
   public killCounted = false; // BotManager scoreboard bookkeeping
   public lastHitZone = 1; // zoneMult of the most recent hit — headshot kill detection
   public lastDamageCause: "player" | "airstrike" | "apache" = "player"; // kill feed attribution
@@ -1171,7 +1171,7 @@ export class Bot {
     w.clip--;
     this.burstLeft--;
     this.fireTimer = profile.fireInterval;
-    this.radarTimer = 2; // firing paints the radar, COD-style
+    this.radarTimer = 2; // firing paints the radar
     if (this.burstLeft <= 0 || w.clip === 0) {
       const [lo, hi] = profile.burstCooldown ?? d.burstCooldown;
       this.burstTimer = rand(lo, hi);

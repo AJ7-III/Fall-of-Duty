@@ -20,7 +20,7 @@ import { CarWreck } from "./CarWreck";
 import { TruckWreck } from "./TruckWreck";
 import { PlayerController } from "../player/PlayerController";
 
-// Shipment-style container yard, scaled off the overhead reference: a 32m
+// Ship Box is a tight container yard, scaled off the overhead reference: a 32m
 // walled square (x/z -16..16) where the four center blocks leave only
 // ~2.5-3m lanes between them. Set on rain-soaked grass under an overcast
 // sky, with stone walkways tracing the lanes and the wall footing.
@@ -35,7 +35,7 @@ import { PlayerController } from "../player/PlayerController";
 //   - Corners: abandoned car w/ breakable glass (SW), white box truck
 //     parked diagonally (NE), pallets, crates
 //   - Past the walls (visual only): warehouses, stacks, water tower, lamps
-export class ShipmentMap {
+export class ShipBoxMap {
   private scene: Scene;
   private loader: AssetLoader;
   private shadowGen: ShadowGenerator | null = null;

@@ -433,7 +433,7 @@ export class Effects {
     this.holeMesh.thinInstanceBufferUpdated("matrix");
   }
 
-  // kill: a bigger marker held a beat longer — the COD kill confirm.
+  // kill: a bigger marker held a beat longer for the Fall of Duty confirm.
   // headshot: the same swell in gold.
   public showHitMarker(kill: boolean = false, headshot: boolean = false): void {
     if (!this.hitMarkerEl) return;
@@ -716,7 +716,7 @@ export class Effects {
 
     const now = ctx.currentTime;
 
-    // Standard COD high-frequency hit indicator "tick"
+    // Standard high-frequency hit indicator "tick"
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 

@@ -8,7 +8,7 @@ export class CameraRig {
   public recoilYaw: number = 0;
   public recoilKickback: number = 0;
 
-  // Settle/Recovery speeds (standard COD4 spring-like feel)
+  // Settle/Recovery speeds (spring-like Fall of Duty feel)
   private recoilRecoverySpeed: number = 10; // rate of recovery
   
   // Sway parameters (idle breathing sway)

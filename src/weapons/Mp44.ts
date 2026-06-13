@@ -9,7 +9,7 @@ import { AssetLoader } from "../engine/AssetLoader";
 
 type ReloadEvent = { time: number; kind: "magOut" | "magIn" | "charge" };
 
-// MP44/StG-44-style automatic rifle. It keeps the weapon loop close to COD4:
+// MP44/StG-44-style automatic rifle. It keeps the weapon loop fast and punchy:
 // full-auto fire while held, magazine reload, and an empty-mag charging handle.
 export class Mp44 implements Weapon {
   public static readonly RELOAD_TOTAL = 1.26;

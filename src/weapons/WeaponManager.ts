@@ -13,7 +13,7 @@ type SwitchPhase = "none" | "lower" | "raise";
 
 export class WeaponManager {
   // X-key swap timing: drop the current weapon, swap meshes at the bottom,
-  // raise the next one (COD4-style quick draw)
+  // raise the next one (Fall of Duty quick draw)
   private static readonly LOWER_TIME = 0.22;
   private static readonly RAISE_TIME = 0.3;
 
@@ -87,7 +87,7 @@ export class WeaponManager {
     this.firedThisFrame = active.clipAmmo < prevClip;
   }
 
-  // Player respawn: COD4 hands you a fresh loadout
+  // Player respawn: Fall of Duty hands you a fresh loadout
   public refillAll(): void {
     for (const weapon of this.weapons) {
       weapon.cancelReload();

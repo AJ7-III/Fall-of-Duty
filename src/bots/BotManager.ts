@@ -17,7 +17,7 @@ import { MatchEvents } from "../ui/MatchEvents";
 // live from the pause menu's 1-10 difficulty slider (persisted to localStorage).
 export class BotManager {
   private static readonly RESPAWN_DELAY = 5;
-  private static readonly DIFFICULTY_KEY = "cod420.difficulty";
+  private static readonly DIFFICULTY_KEY = "fallOfDuty.difficulty";
   private static readonly URL_LEVELS: Record<string, number> = { recruit: 2, regular: 3, hardened: 5, veteran: 8, terminator: 10 };
   // Corner pockets + the two wall pass-through containers
   private static readonly SPAWNS: ReadonlyArray<[number, number]> = [

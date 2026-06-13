@@ -6,7 +6,7 @@ import { CameraRig } from "../player/CameraRig";
 import { PlayerController } from "../player/PlayerController";
 import { DeathCam } from "../player/DeathCam";
 import { WeaponManager } from "../weapons/WeaponManager";
-import { ShipmentMap } from "../world/ShipmentMap";
+import { ShipBoxMap } from "../world/ShipBoxMap";
 import { BotManager } from "../bots/BotManager";
 import { preloadSoldierModel } from "../bots/SoldierAssets";
 import { Killstreaks } from "../killstreaks/Killstreaks";
@@ -37,7 +37,7 @@ export class Game {
   private cameraRig: CameraRig;
   private player: PlayerController;
   private weaponManager: WeaponManager;
-  private map: ShipmentMap;
+  private map: ShipBoxMap;
   private botManager: BotManager;
 
   private viewModelRig: ViewModelRig;
@@ -94,7 +94,7 @@ export class Game {
     this.cameraRig = new CameraRig(this.scene);
     this.player = new PlayerController(this.input, this.cameraRig);
     this.weaponManager = new WeaponManager(this.loader);
-    this.map = new ShipmentMap(this.scene, this.loader);
+    this.map = new ShipBoxMap(this.scene, this.loader);
     
     this.viewModelRig = new ViewModelRig(this.scene, this.cameraRig, this.loader);
     this.scopeOverlay = new ScopeOverlay();
@@ -244,7 +244,7 @@ export class Game {
         // Step 3.5: Bots perceive, decide, move and fight — after the player's
         // shots have landed (deaths register before they act) and with this
         // frame's gunshot noise for their hearing. A respawned player gets a
-        // fresh COD4 loadout.
+        // fresh Fall of Duty loadout.
         this.botManager.update(dt, this.player, this.weaponManager.firedThisFrame);
         if (this.player.consumeRespawn()) {
           this.weaponManager.refillAll();

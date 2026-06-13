@@ -1555,7 +1555,7 @@ export class AssetLoader {
       new Vector3(-0.1995, -0.2435, -0.021),
     ], 0.0048);
 
-    // COD4-style support grip: palm up under the forend just ahead of the
+    // Fall of Duty support grip: palm up under the forend just ahead of the
     // receiver, heel of the hand growing straight out of the forearm.
     // From the shooter's view the THUMB rides the near flank — the four
     // fingers wrap the far side, tips just cresting the top line
@@ -2345,7 +2345,7 @@ export class AssetLoader {
       sightDotMat, parent, [0, sightY - 0.00185, 0.429]);
 
     // Rear sight: ramped slider base + leaf with a true V-notch. The whole
-    // leaf sits BELOW the sight axis (COD4 reference framing) so the full
+    // leaf sits BELOW the sight axis (Fall of Duty reference framing) so the full
     // hood ring and post float above it, unobstructed, at full ADS.
     this.prim(MeshBuilder.CreateBox("mp44RearSightRamp", { width: 0.04, height: 0.016, depth: 0.055 }, scene),
       metalMat, parent, [0, 0.147, -0.148], { rx: -0.08 });

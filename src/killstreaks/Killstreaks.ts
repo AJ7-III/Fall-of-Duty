@@ -12,14 +12,14 @@ import { Apache } from "./Apache";
 import type { ApacheRadarContact } from "./Apache";
 import { ApacheTransmitter } from "./ApacheTransmitter";
 
-// The COD4 ladder, exactly as ordered: 3 kills = UAV (the minimap lights up
+// The Fall of Duty ladder: 3 kills = UAV (the minimap lights up
 // and pulses with every living hostile for 30s), 5 kills = airstrike (press
 // C, the laptop comes up, mark the map, three F-15 passes walk bombs across
 // the mark), 7 kills = Apache ready (press C, thumb the transmitter, then
 // the helicopter takes station and hunts the enemy — only the enemy — for
 // 40 seconds).
 //
-// Streak rules are COD4's too: dying resets the count, but an earned,
+// Streak rules: dying resets the count, but an earned,
 // unused airstrike survives death; streak kills (airstrike, apache) feed
 // the next streak, which is how a good airstrike buys the helicopter.
 export class Killstreaks {
@@ -263,7 +263,7 @@ export class Killstreaks {
       bot.takeDamage(Killstreaks.BLAST_DAMAGE * (1 - d / (Killstreaks.BLAST_RADIUS + 1.2)), "airstrike");
     }
 
-    // The caller is not exempt — COD4 rules: stand in your own strike, eat it
+    // The caller is not exempt: stand in your own strike, eat it
     if (!player.isDead && playerDist <= Killstreaks.BLAST_RADIUS) {
       Killstreaks.TMP_BLAST.set(player.position.x, player.position.y + player.eyeHeight, player.position.z);
       if (!BotNav.losBlocked(eye, Killstreaks.TMP_BLAST)) {

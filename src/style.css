@@ -394,7 +394,7 @@ html, body {
   background-color: #ffd60a;
 }
 
-/* Minimap (top-left, rotating CoD-style radar) */
+/* Minimap (top-left, rotating radar) */
 #minimap {
   position: absolute;
   top: 16px;

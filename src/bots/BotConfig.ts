@@ -1,6 +1,6 @@
 // Bot tuning as data. Difficulty changes HUMAN limits — reaction delay, aim
 // error, burst discipline, awareness — never bullet-sponge health or aimbot
-// accuracy. damageScale is the one COD-style concession: harder enemies hit
+// accuracy. damageScale is the one arcade concession: harder enemies hit
 // for more, like the campaign difficulties do.
 
 export interface BotDifficulty {

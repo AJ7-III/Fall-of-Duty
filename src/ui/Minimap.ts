@@ -1,15 +1,15 @@
 import { PlayerController } from "../player/PlayerController";
-import { ShipmentMap } from "../world/ShipmentMap";
+import { ShipBoxMap } from "../world/ShipBoxMap";
 import type { Bot } from "../bots/Bot";
 import type { ApacheRadarContact } from "../killstreaks/Apache";
 
-// Rotating top-down radar (CoD style): the player sits fixed at the center
+// Rotating top-down radar: the player sits fixed at the center
 // facing up, and the world rotates around them. Draws the arena bounds, the
-// collision obstacles registered by ShipmentMap, and target blips.
+// collision obstacles registered by ShipBoxMap, and target blips.
 export class Minimap {
   private canvas: HTMLCanvasElement | null;
   private ctx: CanvasRenderingContext2D | null = null;
-  private map: ShipmentMap;
+  private map: ShipBoxMap;
 
   // World meters visible from center to the map edge
   private viewRadius: number = 22;
@@ -21,7 +21,7 @@ export class Minimap {
   private static readonly LAYER_PAD = 4; // keeps the boundary stroke inside the bake
   private wedgeSprite: HTMLCanvasElement | null = null;
 
-  constructor(map: ShipmentMap) {
+  constructor(map: ShipBoxMap) {
     this.map = map;
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement | null;
     if (this.canvas) {
@@ -153,7 +153,7 @@ export class Minimap {
       ctx.fill();
     }
 
-    // Bot blips, COD radar rule: firing paints you for a couple of seconds,
+    // Bot blips: firing paints you for a couple of seconds,
     // silent enemies stay off the map — unless the UAV is overhead, which
     // paints EVERYONE alive, pulsing so the reveal reads as live recon
     if (uavActive) {

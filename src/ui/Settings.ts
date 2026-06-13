@@ -3,7 +3,7 @@
 // systems that consume it (e.g. RivalVoice reading its initial mute state)
 // can share one source of truth without a circular import.
 
-const TRASH_TALK_KEY = "cod420.muteTrashTalk";
+const TRASH_TALK_KEY = "fallOfDuty.muteTrashTalk";
 
 function readBool(key: string, fallback: boolean): boolean {
   try {

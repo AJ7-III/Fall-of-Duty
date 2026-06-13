@@ -253,7 +253,7 @@ export class ViewModelRig {
     }
 
     // 5. Cycle lift: roll the weapon's working side toward the camera while
-    // the hands are busy on it (COD4-style weapon handling read)
+    // the hands are busy on it (Fall of Duty weapon handling read)
     this.cycleLift += (liftTarget - this.cycleLift) * (1 - Math.exp(-10 * deltaTime));
     const lift = this.cycleLift;
     if (activeWeapon.id === "m40a3") {
@@ -311,7 +311,7 @@ export class ViewModelRig {
     this.weaponMesh.rotation.x -= 1.0 * block; // raise the muzzle skyward
     this.weaponMesh.rotation.y += 0.12 * block;
 
-    // 7. Sprint carry (COD4-style): the weapon drops low across the body with
+    // 7. Sprint carry: the weapon drops low across the body with
     // the muzzle swung up-left, pumping in rhythm with the stride. Yields to
     // ADS and to the wall-block pose so the layers never over-rotate.
     const sprintTarget = isSprinting ? 1 : 0;

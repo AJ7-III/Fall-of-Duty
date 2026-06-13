@@ -26,7 +26,7 @@ const WEAPON_NAMES: Record<string, string> = {
   airstrike: "AIRSTRIKE", apache: "APACHE",
 };
 
-// Streak callouts — the COD4 reward ladder (Killstreaks delivers the goods;
+// Streak callouts — the Fall of Duty reward ladder (Killstreaks delivers the goods;
 // these are the announcements): [streak length, label, fanfare tier]
 const STREAK_CALLS: ReadonlyArray<[number, string, number]> = [
   [3, "UAV RECON ONLINE", 1],
