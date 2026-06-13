@@ -79,6 +79,10 @@ html, body {
 .sb-enemy { border-radius: 0 8px 8px 0; border-left: none; }
 
 .sb-label {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 10px;
   letter-spacing: 2px;
   color: rgba(240, 243, 246, 0.6);
@@ -803,6 +807,10 @@ html, body {
 }
 
 .operator-readout strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
   letter-spacing: 2px;
   color: #46d160;
@@ -830,6 +838,41 @@ html, body {
 
 .start-panel-label span {
   color: #ff9500;
+}
+
+.start-identity {
+  display: grid;
+  gap: 10px;
+}
+
+.start-identity .start-panel-label {
+  margin-bottom: 0;
+}
+
+.start-username-input {
+  pointer-events: auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 0 13px;
+  border: 1px solid rgba(70, 209, 96, 0.26);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(0, 0, 0, 0.34);
+  color: #f0f3f6;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.start-username-input::placeholder {
+  color: rgba(240, 243, 246, 0.36);
+}
+
+.start-username-input:focus {
+  border-color: rgba(70, 209, 96, 0.78);
+  box-shadow: 0 0 0 3px rgba(70, 209, 96, 0.13);
 }
 
 .weapon-grid {

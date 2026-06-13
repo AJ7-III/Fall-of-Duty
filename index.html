@@ -81,13 +81,27 @@
             <div class="start-operator">
               <canvas id="start-character-preview" aria-label="3D operator preview"></canvas>
               <div class="operator-readout">
-                <span>OPERATOR</span>
-                <strong>VANGUARD RIG</strong>
+                <span>CALLSIGN</span>
+                <strong id="start-operator-name">Player 1</strong>
               </div>
             </div>
           </div>
 
           <div class="start-side">
+            <div class="start-panel start-identity">
+              <label class="start-panel-label" for="start-username">USERNAME</label>
+              <input
+                id="start-username"
+                class="start-username-input"
+                type="text"
+                value="Player 1"
+                placeholder="Player 1"
+                maxlength="24"
+                autocomplete="nickname"
+                spellcheck="false"
+              />
+            </div>
+
             <div class="start-panel start-loadout">
               <div class="start-panel-label">AVAILABLE GUNS</div>
               <div class="weapon-grid">

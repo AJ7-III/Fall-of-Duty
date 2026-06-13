@@ -2,7 +2,7 @@ import type { Effects } from "../rendering/Effects";
 import { MatchEvents } from "./MatchEvents";
 import { TERMINATOR_LEVEL, difficultyLevelName } from "../bots/BotConfig";
 import { StartCharacterPreview } from "./StartCharacterPreview";
-import { RIVAL_DISPLAY_NAME, USER_DISPLAY_NAME } from "./MatchNames";
+import { getUserDisplayName, normalizeUserDisplayName, RIVAL_DISPLAY_NAME, setUserDisplayName } from "./MatchNames";
 import { Settings } from "./Settings";
 
 // All the "game" around the gunplay: the YOU/OPFOR scoreboard, kill banners
@@ -47,6 +47,9 @@ export class MatchUI {
 
   private hudRootEl = document.getElementById("hud-root");
   private startEl = document.getElementById("start-overlay");
+  private usernameInput = document.getElementById("start-username") as HTMLInputElement | null;
+  private startOperatorNameEl = document.getElementById("start-operator-name");
+  private scoreYouLabelEl = document.querySelector<HTMLElement>(".sb-you .sb-label");
   private startDiffSlider = document.getElementById("start-diff-slider") as HTMLInputElement | null;
   private startDiffValueEl = document.getElementById("start-diff-value");
   private startDiffNameEl = document.getElementById("start-diff-name");
@@ -109,10 +112,18 @@ export class MatchUI {
   constructor(effects: Effects, getPlayerWeaponId: () => string, callbacks: MatchUICallbacks) {
     this.effects = effects;
     this.getPlayerWeaponId = getPlayerWeaponId;
-    document.getElementById("btn-start")?.addEventListener("click", () => callbacks.onStart());
+    document.getElementById("btn-start")?.addEventListener("click", () => this.startFromMenu(callbacks.onStart));
     document.getElementById("btn-resume")?.addEventListener("click", () => callbacks.onResume());
     document.getElementById("btn-end")?.addEventListener("click", () => callbacks.onEndMatch());
     document.getElementById("btn-again")?.addEventListener("click", () => callbacks.onPlayAgain());
+
+    this.usernameInput?.addEventListener("input", () => this.renderUsernamePreview());
+    this.usernameInput?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      this.startFromMenu(callbacks.onStart);
+    });
+    this.renderUsernamePreview();
 
     this.startDiffSlider?.addEventListener("input", () => {
       const level = parseInt(this.startDiffSlider!.value, 10);
@@ -170,7 +181,7 @@ export class MatchUI {
     const weapon = cause === "player" ? WEAPON_NAMES[this.getPlayerWeaponId()] ?? "—" : WEAPON_NAMES[cause];
     this.banner(headshot ? "HEADSHOT" : "ENEMY DOWN", headshot);
     this.floatPoints(`+${points}`, headshot);
-    this.addFeedRow("YOU", weapon, "OPFOR", false);
+    this.addFeedRow(getUserDisplayName(), weapon, "OPFOR", false);
     this.effects.playKillSound(headshot);
 
     for (const [count, label, tier] of STREAK_CALLS) {
@@ -183,7 +194,7 @@ export class MatchUI {
 
   private onPlayerDeath(weaponId: string, self: boolean): void {
     this.streak = 0;
-    this.addFeedRow(self ? "YOU" : "OPFOR", WEAPON_NAMES[weaponId] ?? "—", "YOU", true);
+    this.addFeedRow(self ? getUserDisplayName() : "OPFOR", WEAPON_NAMES[weaponId] ?? "—", getUserDisplayName(), true);
   }
 
   // --------------------------------------------------------------- juice bits
@@ -225,7 +236,14 @@ export class MatchUI {
     if (!this.feedEl) return;
     const row = document.createElement("div");
     row.className = enemyKill ? "kf-row enemy" : "kf-row";
-    row.innerHTML = `<b>${left}</b><span class="kf-weapon">[ ${weapon} ]</span><b>${right}</b>`;
+    const leftEl = document.createElement("b");
+    const weaponEl = document.createElement("span");
+    const rightEl = document.createElement("b");
+    leftEl.textContent = left;
+    weaponEl.className = "kf-weapon";
+    weaponEl.textContent = `[ ${weapon} ]`;
+    rightEl.textContent = right;
+    row.append(leftEl, weaponEl, rightEl);
     this.feedEl.prepend(row);
     while (this.feedEl.children.length > 5) this.feedEl.lastElementChild?.remove();
     setTimeout(() => row.remove(), 5000);
@@ -235,6 +253,7 @@ export class MatchUI {
 
   public showStart(level: number): void {
     this.renderDifficulty(level);
+    this.renderUsernamePreview();
     this.hudRootEl?.classList.add("start-screen-active");
     this.startEl?.classList.remove("hidden");
     this.startPreview.start();
@@ -282,6 +301,7 @@ export class MatchUI {
     // Winner pill rides whichever side took the match
     const youBadge = youWon ? `<span class="end-winner">WINNER</span>` : "";
     const enemyBadge = enemyWon ? `<span class="end-winner">WINNER</span>` : "";
+    const userDisplayName = this.escapeHtml(getUserDisplayName());
     if (this.endScoreEl) {
       this.endScoreEl.innerHTML = `
         <div class="end-score-row end-score-head">
@@ -289,7 +309,7 @@ export class MatchUI {
           <span>SCORE</span>
         </div>
         <div class="end-score-row you${youWon ? " is-winner" : ""}">
-          <span class="end-username">${USER_DISPLAY_NAME}${youBadge}</span>
+          <span class="end-username">${userDisplayName}${youBadge}</span>
           <span class="end-score-num" data-count="${you}">0</span>
         </div>
         <div class="end-score-row enemy${enemyWon ? " is-winner" : ""}">
@@ -385,6 +405,29 @@ export class MatchUI {
       const stateEl = el.querySelector(".trash-toggle-state");
       if (stateEl) stateEl.textContent = this.trashTalkMuted ? "ON" : "OFF";
     }
+  }
+
+  private startFromMenu(onStart: () => void): void {
+    const displayName = setUserDisplayName(this.usernameInput?.value ?? "");
+    if (this.usernameInput) this.usernameInput.value = displayName;
+    this.renderUsernamePreview();
+    onStart();
+  }
+
+  private renderUsernamePreview(): void {
+    const displayName = normalizeUserDisplayName(this.usernameInput?.value ?? getUserDisplayName());
+    if (this.startOperatorNameEl) this.startOperatorNameEl.innerText = displayName;
+    if (this.scoreYouLabelEl) this.scoreYouLabelEl.innerText = displayName;
+  }
+
+  private escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[char]!);
   }
 
   private renderDifficulty(level: number): void {
