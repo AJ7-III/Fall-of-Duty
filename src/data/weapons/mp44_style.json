@@ -1,0 +1,19 @@
+{
+  "name": "MP44-Style Machine Gun",
+  "magSize": 30,
+  "maxReserveAmmo": 90,
+  "damage": 32,
+  "fireInterval": 0.095,
+  "boltCycleDuration": 0,
+  "adsSpread": 0.001,
+  "recoilHip": {
+    "pitch": 1.15,
+    "yaw": 0.62,
+    "kickBack": 0.068
+  },
+  "recoilAds": {
+    "pitch": 0.62,
+    "yaw": 0.28,
+    "kickBack": 0.04
+  }
+}

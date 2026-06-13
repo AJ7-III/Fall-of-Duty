@@ -1,0 +1,19 @@
+{
+  "name": "USP .45-Style Pistol",
+  "magSize": 12,
+  "maxReserveAmmo": 36,
+  "damage": 24,
+  "fireInterval": 0.16,
+  "boltCycleDuration": 0,
+  "adsSpread": 0.0015,
+  "recoilHip": {
+    "pitch": 1.7,
+    "yaw": 0.55,
+    "kickBack": 0.075
+  },
+  "recoilAds": {
+    "pitch": 1.15,
+    "yaw": 0.3,
+    "kickBack": 0.05
+  }
+}

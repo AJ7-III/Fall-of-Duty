@@ -1,0 +1,19 @@
+{
+  "name": "M40A3-Style Sniper",
+  "magSize": 5,
+  "maxReserveAmmo": 15,
+  "damage": 999,
+  "fireInterval": 1.5,
+  "boltCycleDuration": 1.2,
+  "adsSpread": 0.0,
+  "recoilHip": {
+    "pitch": 4.5,
+    "yaw": 0.8,
+    "kickBack": 0.15
+  },
+  "recoilAds": {
+    "pitch": 1.5,
+    "yaw": 0.2,
+    "kickBack": 0.06
+  }
+}
