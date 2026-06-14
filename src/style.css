@@ -528,7 +528,7 @@ html, body {
   50% { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 18px rgba(110, 240, 150, 0.6); }
 }
 
-/* Killstreak hint (bottom center): "AIRSTRIKE READY — PRESS C" etc. */
+/* Killstreak hint (bottom center): "AIRSTRIKE READY — PRESS 4" etc. */
 #streak-hint {
   position: absolute;
   bottom: 88px;

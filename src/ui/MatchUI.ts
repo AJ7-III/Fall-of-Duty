@@ -30,8 +30,8 @@ const WEAPON_NAMES: Record<string, string> = {
 // these are the announcements): [streak length, label, fanfare tier]
 const STREAK_CALLS: ReadonlyArray<[number, string, number]> = [
   [3, "UAV RECON ONLINE", 1],
-  [5, "AIRSTRIKE READY — PRESS C", 2],
-  [7, "APACHE READY — PRESS C", 3],
+  [5, "AIRSTRIKE READY — PRESS 4", 2],
+  [7, "APACHE READY — PRESS 4", 3],
 ];
 
 export class MatchUI {

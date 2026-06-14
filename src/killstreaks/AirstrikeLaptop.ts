@@ -4,7 +4,7 @@ import { PlayerController } from "../player/PlayerController";
 import { Input } from "../engine/Input";
 import type { Bot } from "../bots/Bot";
 
-// The Fall of Duty airstrike ritual: press C and the rifle drops out of frame while
+// The Fall of Duty airstrike ritual: press 4 and the rifle drops out of frame while
 // a field laptop swings up, its screen a live north-up tactical map of the
 // yard. The mouse stops steering the view and starts steering the targeting
 // cursor on that screen; left-click marks the strike, C slams the lid shut.

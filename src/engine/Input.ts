@@ -14,7 +14,8 @@ export class Input {
   // Keys the game consumes — suppress their browser default while pointer-locked
   private static readonly GAME_KEYS = new Set([
     "KeyW", "KeyA", "KeyS", "KeyD",
-    "Space", "KeyZ", "KeyQ", "KeyC", "ControlLeft", "ControlRight", "KeyR", "KeyX", "KeyP",
+    "Space", "KeyZ", "ShiftLeft", "ShiftRight", "KeyC", "ControlLeft", "ControlRight",
+    "KeyR", "KeyX", "KeyP", "Digit4", "Numpad4",
   ]);
 
   // Reused result object so multiple readers per frame see the same delta without allocating

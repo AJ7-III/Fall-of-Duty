@@ -50,9 +50,8 @@ export class PlayerController {
   public isDead: boolean = false;
   public deaths: number = 0;
   // Killstreak laptop: while it's out, the mouse drives the targeting cursor
-  // instead of the view, and the C key belongs to the laptop, not crouch
+  // instead of the view.
   public lookLocked: boolean = false;
-  public crouchKeyCaptured: boolean = false;
   // Wired by Game to BotManager.pickPlayerSpawn so respawns land far from
   // (and out of sight of) living enemies instead of on a random corner
   public spawnPicker: ((spawns: ReadonlyArray<[number, number]>) => [number, number]) | null = null;
@@ -369,10 +368,8 @@ export class PlayerController {
     }
 
     // 2. Stance input: tap C/Ctrl to toggle crouch; hold to drop prone.
-    // C is loaned to the killstreak laptop while one is ready, but Ctrl
-    // always controls stance.
     const stanceInputDown =
-      (this.input.isKeyDown("KeyC") && !this.crouchKeyCaptured) ||
+      this.input.isKeyDown("KeyC") ||
       this.input.isKeyDown("ControlLeft") ||
       this.input.isKeyDown("ControlRight");
     const stancePressed = stanceInputDown && !this.stanceInputWasDown;
@@ -416,9 +413,13 @@ export class PlayerController {
     if (this.input.isKeyDown("KeyA")) moveSide -= 1;
     if (this.input.isKeyDown("KeyD")) moveSide += 1;
 
-    // Sprint (hold Q): forward movement only, cancelled by crouch and by ADS
+    // Sprint (hold Shift): forward movement only, cancelled by crouch and by ADS
     this.isSprinting =
-      this.input.isKeyDown("KeyQ") && moveForward > 0 && !this.isCrouching && !this.isProne && adsProgress < 0.1;
+      (this.input.isKeyDown("ShiftLeft") || this.input.isKeyDown("ShiftRight")) &&
+      moveForward > 0 &&
+      !this.isCrouching &&
+      !this.isProne &&
+      adsProgress < 0.1;
 
     // Determine speed
     const currentSpeed = this.isProne

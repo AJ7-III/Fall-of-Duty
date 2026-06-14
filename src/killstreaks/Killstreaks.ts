@@ -14,8 +14,8 @@ import { ApacheTransmitter } from "./ApacheTransmitter";
 
 // The Fall of Duty ladder: 3 kills = UAV (the minimap lights up
 // and pulses with every living hostile for 30s), 5 kills = airstrike (press
-// C, the laptop comes up, mark the map, three F-15 passes walk bombs across
-// the mark), 7 kills = Apache ready (press C, thumb the transmitter, then
+// 4, the laptop comes up, mark the map, three F-15 passes walk bombs across
+// the mark), 7 kills = Apache ready (press 4, thumb the transmitter, then
 // the helicopter takes station and hunts the enemy — only the enemy — for
 // 40 seconds).
 //
@@ -116,10 +116,10 @@ export class Killstreaks {
     this.now += dt;
     const player = this.player;
 
-    // C: Apache transmitter first, then the airstrike laptop. If both rewards
+    // 4: Apache transmitter first, then the airstrike laptop. If both rewards
     // are banked, the higher streak gets the first press and the airstrike
     // stays ready for the next one.
-    if (this.input.isKeyPressed("KeyC")) {
+    if (this.input.isKeyPressed("Digit4") || this.input.isKeyPressed("Numpad4")) {
       if (this.apacheReady && !player.isDead && !this.laptop.isOut && !this.transmitter.isOut) {
         this.transmitter.open();
         this.effects.playLaptopOpenSound();
@@ -152,9 +152,8 @@ export class Killstreaks {
       this.effects.playAirstrikeConfirmSound();
     }
 
-    // the laptop borrows the mouse; any banked handheld reward borrows C
+    // the laptop borrows the mouse while it is open
     player.lookLocked = this.laptop.isOut;
-    player.crouchKeyCaptured = this.airstrikeReady || this.apacheReady || this.laptop.isOut || this.transmitter.isOut;
 
     // jets first (they announce the bombs), then the bombs themselves
     for (let i = this.jetRuns.length - 1; i >= 0; i--) {
@@ -181,15 +180,15 @@ export class Killstreaks {
 
     // bottom-center hint: one DOM write per state change
     const hint = this.laptop.isOut
-      ? "LMB — MARK TARGET · C — CLOSE"
+      ? "LMB — MARK TARGET · 4 — CLOSE"
       : this.transmitter.isOut
         ? "TRANSMITTING APACHE AUTH"
       : this.bombs.length > 0 || this.jetRuns.length > 0
         ? "AIRSTRIKE INBOUND"
         : this.apacheReady && !player.isDead
-          ? "APACHE READY — PRESS C"
+          ? "APACHE READY — PRESS 4"
         : this.airstrikeReady && !player.isDead
-          ? "AIRSTRIKE READY — PRESS C"
+          ? "AIRSTRIKE READY — PRESS 4"
           : "";
     if (hint !== this.lastHint) {
       this.lastHint = hint;
@@ -325,12 +324,11 @@ export class Killstreaks {
     this.effects.setRotorMuted(paused);
   }
 
-  // End screen: silence the rotor and give the player their keys back
+  // End screen: silence the rotor and give camera control back
   public onMatchEnd(): void {
     this.laptop.forceClose();
     this.transmitter.forceClose();
     this.player.lookLocked = false;
-    this.player.crouchKeyCaptured = false;
     if (this.apache.active) this.apache.despawnImmediate(this.effects);
     if (this.hintEl) this.hintEl.classList.add("hidden");
     this.lastHint = "";
