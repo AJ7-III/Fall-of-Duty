@@ -1,14 +1,13 @@
 # Fall of Duty
 
-Fall of Duty is a browser-based 1v1 FPS built over a two-day sprint by AJ7-III and Claude Fable 5. Fight a computer-controlled opponent on a compact arena map, tune the enemy difficulty, and race to the kill limit with weapons, streak rewards, and arcade-style match flow.
+Fall of Duty is a browser-based 1v1 FPS built over a two-day sprint with the initial Fable 5 release. Battle with a computer-controlled opponent on a historical FPS map, tune the enemy difficulty and toggle whther they engage in trash talking to you in the settings, then enjoy CoD style 1v1 gameplay. 
 
 ## Features
 
-- 1v1 FPS combat against an AI opponent
+- 1v1 FPS combat
 - Adjustable enemy difficulty
 - Killstreak rewards, including UAV, airstrike, and Apache support
 - Multiple weapons: MP44, M40A3, and USP .45
-- Custom player callsign on the start screen
 - Match HUD, kill feed, end screen, and score tracking
 - Browser-native play with Vite and Babylon.js
 
