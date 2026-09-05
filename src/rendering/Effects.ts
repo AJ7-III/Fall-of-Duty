@@ -1,5 +1,5 @@
+import type { Scene } from "@babylonjs/core";
 import {
-  Scene,
   Vector3,
   Mesh,
   MeshBuilder,
@@ -204,8 +204,12 @@ export class Effects {
     for (let i = 0; i < 7; i++) {
       const a = (Math.PI * 2 * i) / 7 + 0.4;
       const lobe = fireCtx.createRadialGradient(
-        64 + Math.cos(a) * 30, 64 + Math.sin(a) * 30, 2,
-        64 + Math.cos(a) * 30, 64 + Math.sin(a) * 30, 22
+        64 + Math.cos(a) * 30,
+        64 + Math.sin(a) * 30,
+        2,
+        64 + Math.cos(a) * 30,
+        64 + Math.sin(a) * 30,
+        22
       );
       lobe.addColorStop(0, "rgba(255, 196, 110, 0.85)");
       lobe.addColorStop(1, "rgba(0, 0, 0, 0)");
@@ -235,7 +239,12 @@ export class Effects {
     const smokeTex = new DynamicTexture("smokePuffTex", { width: 128, height: 128 }, scene, true);
     const smokeCtx = smokeTex.getContext() as CanvasRenderingContext2D;
     smokeCtx.clearRect(0, 0, 128, 128);
-    for (const [px, py, r, a] of [[64, 64, 52, 0.5], [44, 50, 30, 0.4], [86, 56, 28, 0.4], [60, 86, 30, 0.35]] as const) {
+    for (const [px, py, r, a] of [
+      [64, 64, 52, 0.5],
+      [44, 50, 30, 0.4],
+      [86, 56, 28, 0.4],
+      [60, 86, 30, 0.35],
+    ] as const) {
       const puff = smokeCtx.createRadialGradient(px, py, 2, px, py, r);
       puff.addColorStop(0, `rgba(70, 66, 60, ${a})`);
       puff.addColorStop(1, "rgba(70, 66, 60, 0)");
@@ -285,7 +294,8 @@ export class Effects {
 
     // Lazy initialize AudioContext on first user interaction
     const initAudio = () => {
-      this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const legacy = (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      this.audioCtx = new (window.AudioContext || legacy)();
       window.removeEventListener("click", initAudio);
       window.removeEventListener("keydown", initAudio);
     };
@@ -449,12 +459,15 @@ export class Effects {
     // One live timer: a stale fade from a previous rapid-fire hit must not
     // cut a fresh marker (especially a kill confirm) short
     if (this.hitMarkerTimeout !== null) clearTimeout(this.hitMarkerTimeout);
-    this.hitMarkerTimeout = setTimeout(() => {
-      this.hitMarkerTimeout = null;
-      if (this.hitMarkerEl) {
-        this.hitMarkerEl.style.opacity = "0.0";
-      }
-    }, kill ? 320 : 150);
+    this.hitMarkerTimeout = setTimeout(
+      () => {
+        this.hitMarkerTimeout = null;
+        if (this.hitMarkerEl) {
+          this.hitMarkerEl.style.opacity = "0.0";
+        }
+      },
+      kill ? 320 : 150
+    );
   }
 
   // Audio Synthesis via Web Audio API (100% legal, 100% asset-free)
@@ -551,11 +564,19 @@ export class Effects {
 
   public playShootSound(volume: number = 1): void {
     this.playGunshot({
-      filterFreq: 800, filterEndFreq: 10, filterSweepTime: 0.4,
-      noiseGain: 0.8, noiseDecayTime: 0.3, noiseStopTime: 0.5,
-      oscFreq: 120, oscEndFreq: 20, oscSweepTime: 0.15,
-      oscGain: 1.0, oscDecayTime: 0.2, oscStopTime: 0.3,
-      volume
+      filterFreq: 800,
+      filterEndFreq: 10,
+      filterSweepTime: 0.4,
+      noiseGain: 0.8,
+      noiseDecayTime: 0.3,
+      noiseStopTime: 0.5,
+      oscFreq: 120,
+      oscEndFreq: 20,
+      oscSweepTime: 0.15,
+      oscGain: 1.0,
+      oscDecayTime: 0.2,
+      oscStopTime: 0.3,
+      volume,
     });
   }
 
@@ -635,11 +656,19 @@ export class Effects {
   // Sharper, shorter crack than the rifle: less low-end, faster decay
   public playPistolShootSound(volume: number = 1): void {
     this.playGunshot({
-      filterFreq: 2600, filterEndFreq: 80, filterSweepTime: 0.18,
-      noiseGain: 0.65, noiseDecayTime: 0.16, noiseStopTime: 0.25,
-      oscFreq: 170, oscEndFreq: 35, oscSweepTime: 0.09,
-      oscGain: 0.75, oscDecayTime: 0.12, oscStopTime: 0.15,
-      volume
+      filterFreq: 2600,
+      filterEndFreq: 80,
+      filterSweepTime: 0.18,
+      noiseGain: 0.65,
+      noiseDecayTime: 0.16,
+      noiseStopTime: 0.25,
+      oscFreq: 170,
+      oscEndFreq: 35,
+      oscSweepTime: 0.09,
+      oscGain: 0.75,
+      oscDecayTime: 0.12,
+      oscStopTime: 0.15,
+      volume,
     });
   }
 
@@ -647,12 +676,20 @@ export class Effects {
   // with a short mechanical slap layered in so full-auto has a stamped-metal cadence.
   public playMp44ShootSound(volume: number = 1): void {
     this.playGunshot({
-      filterFreq: 1800, filterEndFreq: 55, filterSweepTime: 0.22,
-      noiseGain: 0.58, noiseDecayTime: 0.19, noiseStopTime: 0.28,
-      oscFreq: 135, oscEndFreq: 38, oscSweepTime: 0.1,
-      oscGain: 0.7, oscDecayTime: 0.14, oscStopTime: 0.16,
+      filterFreq: 1800,
+      filterEndFreq: 55,
+      filterSweepTime: 0.22,
+      noiseGain: 0.58,
+      noiseDecayTime: 0.19,
+      noiseStopTime: 0.28,
+      oscFreq: 135,
+      oscEndFreq: 38,
+      oscSweepTime: 0.1,
+      oscGain: 0.7,
+      oscDecayTime: 0.14,
+      oscStopTime: 0.16,
       click: { delay: 0.018, freq: 780, duration: 0.035, volume: 0.16 },
-      volume
+      volume,
     });
   }
 
@@ -763,7 +800,9 @@ export class Effects {
   // Short ascending fanfare for killstreak callouts — higher tiers reach higher
   public playStreakSound(tier: number): void {
     const base: Array<[number, number, number, number]> = [
-      [0, 523, 0.12, 0.14], [0.09, 659, 0.12, 0.14], [0.18, 784, 0.2, 0.15],
+      [0, 523, 0.12, 0.14],
+      [0.09, 659, 0.12, 0.14],
+      [0.18, 784, 0.2, 0.15],
     ];
     if (tier >= 2) base.push([0.27, 1046, 0.26, 0.15]);
     this.playTones(...base);
@@ -925,10 +964,18 @@ export class Effects {
   // Chin gun: short bark per round, deeper than any infantry rifle
   public playApacheGunSound(volume: number): void {
     this.playGunshot({
-      filterFreq: 1100, filterEndFreq: 60, filterSweepTime: 0.12,
-      noiseGain: 0.5, noiseDecayTime: 0.1, noiseStopTime: 0.16,
-      oscFreq: 105, oscEndFreq: 42, oscSweepTime: 0.06,
-      oscGain: 0.6, oscDecayTime: 0.09, oscStopTime: 0.12,
+      filterFreq: 1100,
+      filterEndFreq: 60,
+      filterSweepTime: 0.12,
+      noiseGain: 0.5,
+      noiseDecayTime: 0.1,
+      noiseStopTime: 0.16,
+      oscFreq: 105,
+      oscEndFreq: 42,
+      oscSweepTime: 0.06,
+      oscGain: 0.6,
+      oscDecayTime: 0.09,
+      oscStopTime: 0.12,
       volume,
     });
   }
@@ -959,11 +1006,7 @@ export class Effects {
 
   // Dead weight meeting the ground, gear clattering on top of it
   public playBodyFallSound(volume: number): void {
-    this.playClicks(
-      [0, 150, 0.08, 0.5 * volume],
-      [0.06, 95, 0.13, 0.55 * volume],
-      [0.14, 330, 0.05, 0.2 * volume]
-    );
+    this.playClicks([0, 150, 0.08, 0.5 * volume], [0.06, 95, 0.13, 0.55 * volume], [0.14, 330, 0.05, 0.2 * volume]);
   }
 
   // --- Apache rotor loop: started lazily, volume steered every frame ---

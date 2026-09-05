@@ -13,7 +13,7 @@
   </head>
   <body>
     <canvas id="renderCanvas" aria-label="Fall of Duty game canvas"></canvas>
-    
+
     <!-- HUD overlays -->
     <div id="hud-root">
       <div id="damage-vignette"></div>
@@ -55,8 +55,9 @@
       <div id="points-layer"></div>
 
       <div id="hud-controls">
-        <b>WASD</b> Move &nbsp;·&nbsp; <b>SHIFT</b> Sprint &nbsp;·&nbsp; <b>Z</b> Jump &nbsp;·&nbsp; <b>CTRL/C</b> Tap crouch / hold prone &nbsp;·&nbsp;
-        <b>SPACE / RMB</b> Aim &nbsp;·&nbsp; <b>LMB</b> Fire &nbsp;·&nbsp; <b>R</b> Reload &nbsp;·&nbsp; <b>X</b> Swap &nbsp;·&nbsp; <b>4</b> Killstreak &nbsp;·&nbsp; <b>P</b> Pause
+        <b>WASD</b> Move &nbsp;·&nbsp; <b>SHIFT</b> Sprint &nbsp;·&nbsp; <b>Z</b> Jump &nbsp;·&nbsp; <b>CTRL/C</b> Tap crouch /
+        hold prone &nbsp;·&nbsp; <b>SPACE / RMB</b> Aim &nbsp;·&nbsp; <b>LMB</b> Fire &nbsp;·&nbsp; <b>R</b> Reload &nbsp;·&nbsp;
+        <b>X</b> Swap &nbsp;·&nbsp; <b>4</b> Killstreak &nbsp;·&nbsp; <b>P</b> Pause
       </div>
       <!-- Killstreak hint (4 = airstrike laptop / Apache transmitter when one is banked) -->
       <div id="streak-hint" class="hidden"></div>
@@ -64,6 +65,7 @@
         <div id="hud-ammo"><span id="ammo-clip">30</span>/<span id="ammo-reserve">90</span></div>
       </div>
       <div id="hud-prompt"></div>
+      <div id="hud-toast" class="hidden" role="status"></div>
 
       <!-- Futuristic pre-match start screen -->
       <div id="start-overlay">
@@ -131,6 +133,16 @@
               <div class="menu-settings-scale"><span>RECRUIT</span><span>TERMINATOR</span></div>
             </div>
 
+            <div class="start-panel start-graphics">
+              <div class="start-panel-label">GRAPHICS</div>
+              <div class="quality-picker" role="radiogroup" aria-label="Graphics quality" data-quality-picker>
+                <button type="button" class="quality-opt" data-quality="high">HIGH</button>
+                <button type="button" class="quality-opt" data-quality="balanced">BALANCED</button>
+                <button type="button" class="quality-opt" data-quality="performance">FAST</button>
+              </div>
+              <div class="quality-desc" data-quality-desc></div>
+            </div>
+
             <div class="start-panel start-comms">
               <div class="start-panel-label">COMMS</div>
               <button id="btn-trash-start" class="trash-toggle" type="button" aria-pressed="true">
@@ -160,6 +172,15 @@
             </div>
             <input id="diff-slider" type="range" min="1" max="10" step="1" value="5" />
             <div class="menu-settings-scale"><span>RECRUIT</span><span>TERMINATOR</span></div>
+          </div>
+          <div class="menu-settings">
+            <div class="menu-settings-label">GRAPHICS</div>
+            <div class="quality-picker" role="radiogroup" aria-label="Graphics quality" data-quality-picker>
+              <button type="button" class="quality-opt" data-quality="high">HIGH</button>
+              <button type="button" class="quality-opt" data-quality="balanced">BALANCED</button>
+              <button type="button" class="quality-opt" data-quality="performance">FAST</button>
+            </div>
+            <div class="quality-desc" data-quality-desc></div>
           </div>
           <button id="btn-trash-pause" class="trash-toggle" type="button" aria-pressed="true">
             <span class="trash-toggle-text">

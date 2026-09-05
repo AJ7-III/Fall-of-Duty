@@ -1,12 +1,12 @@
-import { Scene } from "@babylonjs/core";
-import { Input } from "../engine/Input";
-import { CameraRig } from "../player/CameraRig";
-import { PlayerController } from "../player/PlayerController";
+import type { Scene } from "@babylonjs/core";
+import type { Input } from "../engine/Input";
+import type { CameraRig } from "../player/CameraRig";
+import type { PlayerController } from "../player/PlayerController";
 import { BoltActionSniper } from "./BoltActionSniper";
 import { Mp44 } from "./Mp44";
 import { Pistol } from "./Pistol";
 import type { Weapon } from "./WeaponTypes";
-import { Effects } from "../rendering/Effects";
+import type { Effects } from "../rendering/Effects";
 
 type SwitchPhase = "none" | "lower" | "raise";
 
@@ -74,15 +74,7 @@ export class WeaponManager {
     const inputEnabled = this.switchPhase === "none" && alive && allowInput;
     const active = this.getActiveWeapon();
     const prevClip = active.clipAmmo;
-    active.update(
-      deltaTime,
-      input,
-      playerController,
-      cameraRig,
-      scene,
-      effects,
-      inputEnabled
-    );
+    active.update(deltaTime, input, playerController, cameraRig, scene, effects, inputEnabled);
     this.firedThisFrame = active.clipAmmo < prevClip;
   }
 

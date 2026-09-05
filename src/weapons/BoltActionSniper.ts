@@ -1,10 +1,11 @@
-import { Scene, Vector3 } from "@babylonjs/core";
-import { Input } from "../engine/Input";
-import { CameraRig } from "../player/CameraRig";
+import type { Scene } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core";
+import type { Input } from "../engine/Input";
+import type { CameraRig } from "../player/CameraRig";
 import { ADSAnimator } from "./ADSAnimator";
 import { fireHitscanRay } from "./WeaponTypes";
 import type { Weapon, WeaponConfig, WeaponState } from "./WeaponTypes";
-import { Effects } from "../rendering/Effects";
+import type { Effects } from "../rendering/Effects";
 import { weaponAdsFrames, weaponConfig } from "./WeaponData";
 
 type ReloadEvent = { time: number; kind: "boltOpen" | "insert" | "boltClose" };
@@ -59,8 +60,7 @@ export class BoltActionSniper implements Weapon {
     // 1. Check ADS input — Space bar is the zoom key (right mouse also works)
     // Cannot aim down sights if reloading or cycling the bolt
     const canAds = this.state === "idle" || this.state === "empty";
-    this.isAiming =
-      inputEnabled && (input.isKeyDown("Space") || input.isMouseButtonDown(2)) && canAds;
+    this.isAiming = inputEnabled && (input.isKeyDown("Space") || input.isMouseButtonDown(2)) && canAds;
 
     // Update ADS frames
     this.adsAnimator.update(deltaTime, this.isAiming, canAds);
@@ -68,14 +68,14 @@ export class BoltActionSniper implements Weapon {
     // Apply current ADS state properties
     const adsState = this.adsAnimator.getInterpolatedState();
     cameraRig.setFov(adsState.fov);
-    
+
     // 2. Weapon Visual Kick recovery using robust exponential decay
     this.visualKickZ *= Math.exp(-12 * deltaTime);
 
     // 3. Manage State Machine
     if (this.state === "cycling") {
       this.timer -= deltaTime;
-      
+
       // Delay bolt cycle sound to play 0.4 seconds after the shot
       const elapsedCycleTime = this.config.boltCycleDuration - this.timer;
       if (elapsedCycleTime >= 0.4 && !this.boltSoundPlayed) {
@@ -124,7 +124,8 @@ export class BoltActionSniper implements Weapon {
       this.startReload();
       return;
     }
-    if (canUseTrigger && input.isMouseButtonPressed(0)) { // Left click
+    if (canUseTrigger && input.isMouseButtonPressed(0)) {
+      // Left click
       if (this.clipAmmo > 0) {
         this.fire(scene, cameraRig, effects);
       } else {
@@ -186,10 +187,7 @@ export class BoltActionSniper implements Weapon {
 
     const rounds = Math.min(this.config.magSize - this.clipAmmo, this.reserveAmmo);
     this.reloadRounds = rounds;
-    this.reloadTotal =
-      BoltActionSniper.RELOAD_OPEN +
-      rounds * BoltActionSniper.RELOAD_PER_ROUND +
-      BoltActionSniper.RELOAD_CLOSE;
+    this.reloadTotal = BoltActionSniper.RELOAD_OPEN + rounds * BoltActionSniper.RELOAD_PER_ROUND + BoltActionSniper.RELOAD_CLOSE;
 
     this.state = "reloading";
     this.timer = this.reloadTotal;

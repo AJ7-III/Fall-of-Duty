@@ -16,7 +16,7 @@ export class Time {
   public update(): void {
     const now = performance.now();
     // Delta time in seconds
-    let rawDelta = (now - this.lastTime) / 1000.0;
+    const rawDelta = (now - this.lastTime) / 1000.0;
     this.lastTime = now;
 
     // Clamp delta time to avoid physics/logic explosions during lag spikes (e.g., max 100ms per frame)

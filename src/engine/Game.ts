@@ -119,6 +119,7 @@ export class Game {
       onPlayAgain: () => this.restartMatch(),
       onDifficultyChange: (level) => this.botManager.setDifficultyLevel(level),
       onToggleTrashTalk: (muted) => this.rivalVoice.setMuted(muted),
+      onGraphicsChange: (quality) => this.postfx.setQuality(quality),
     });
     this.rivalVoice = new RivalVoice();
     // Both build meshes/materials, so they sit before the freeze below: the
@@ -146,6 +147,10 @@ export class Game {
     // bloom, vignette. This is what lifts the flat-shaded look into
     // something photographic.
     this.postfx = new PostProcessing(this.engine, this.scene, this.cameraRig.camera);
+    this.postfx.setOnQualityChange((quality, auto) => {
+      this.matchUI.renderGraphics(quality);
+      if (auto) this.matchUI.toast(`FRAME RATE LOW — GRAPHICS SET TO ${quality.toUpperCase()}`);
+    });
 
     // Every material in the scene is now final: textures may still repaint
     // (target boards) and light uniforms still update (muzzle flash), but no
@@ -358,6 +363,7 @@ export class Game {
     this.weaponManager.resetLoadout();
     this.killstreaks.resetMatch();
     this.rivalVoice.resetMatch();
+    this.rivalVoice.matchStart();
     this.deathCam.end();
     this.wasDead = false;
     this.everLocked = false;
@@ -419,6 +425,7 @@ export class Game {
     this.weaponManager.resetLoadout();
     this.killstreaks.resetMatch();
     this.rivalVoice.resetMatch();
+    this.rivalVoice.matchStart();
     this.deathCam.end();
     this.wasDead = false;
     this.matchUI.resetMatch();

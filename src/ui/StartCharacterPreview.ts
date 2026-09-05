@@ -66,14 +66,7 @@ export class StartCharacterPreview {
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0, 0, 0, 0);
 
-    const camera = new ArcRotateCamera(
-      "startPreviewCamera",
-      Math.PI / 2,
-      1.18,
-      3.7,
-      new Vector3(0, 1.02, 0),
-      this.scene
-    );
+    const camera = new ArcRotateCamera("startPreviewCamera", Math.PI / 2, 1.18, 3.7, new Vector3(0, 1.02, 0), this.scene);
     camera.fov = 0.58;
     camera.minZ = 0.05;
     camera.maxZ = 30;

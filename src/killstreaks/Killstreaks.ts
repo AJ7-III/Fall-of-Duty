@@ -183,13 +183,13 @@ export class Killstreaks {
       ? "LMB — MARK TARGET · 4 — CLOSE"
       : this.transmitter.isOut
         ? "TRANSMITTING APACHE AUTH"
-      : this.bombs.length > 0 || this.jetRuns.length > 0
-        ? "AIRSTRIKE INBOUND"
-        : this.apacheReady && !player.isDead
-          ? "APACHE READY — PRESS 4"
-        : this.airstrikeReady && !player.isDead
-          ? "AIRSTRIKE READY — PRESS 4"
-          : "";
+        : this.bombs.length > 0 || this.jetRuns.length > 0
+          ? "AIRSTRIKE INBOUND"
+          : this.apacheReady && !player.isDead
+            ? "APACHE READY — PRESS 4"
+            : this.airstrikeReady && !player.isDead
+              ? "AIRSTRIKE READY — PRESS 4"
+              : "";
     if (hint !== this.lastHint) {
       this.lastHint = hint;
       if (this.hintEl) {
@@ -243,11 +243,7 @@ export class Killstreaks {
     const playerDist = Math.sqrt(pdx * pdx + pdz * pdz);
     this.effects.playExplosionSound(playerDist);
     // the whole yard rocks; close ones rock harder
-    this.cameraRig.applyRecoil(
-      Math.min(2.6, 7 / (1 + playerDist * 0.7)),
-      4,
-      Math.min(0.055, 0.16 / (1 + playerDist * 0.5))
-    );
+    this.cameraRig.applyRecoil(Math.min(2.6, 7 / (1 + playerDist * 0.7)), 4, Math.min(0.055, 0.16 / (1 + playerDist * 0.5)));
 
     // Bots: inside the radius and not behind hard cover (containers protect)
     const eye = Killstreaks.TMP_EYE.set(x, 1.1, z);
@@ -293,9 +289,17 @@ export class Killstreaks {
         m.rotation.y = ry;
         m.isPickable = false;
       };
-      const fuselage = MeshBuilder.CreateCapsule(`jet${i}_body`, {
-        radius: 0.4, height: 4.6, tessellation: 8, capSubdivisions: 3, orientation: new Vector3(0, 0, 1),
-      }, scene);
+      const fuselage = MeshBuilder.CreateCapsule(
+        `jet${i}_body`,
+        {
+          radius: 0.4,
+          height: 4.6,
+          tessellation: 8,
+          capSubdivisions: 3,
+          orientation: new Vector3(0, 0, 1),
+        },
+        scene
+      );
       fuselage.scaling.set(0.8, 0.7, 1);
       piece(fuselage, 0, 0, 0);
       piece(MeshBuilder.CreateBox(`jet${i}_wings`, { width: 4.4, height: 0.1, depth: 1.5 }, scene), 0, -0.05, -0.4);

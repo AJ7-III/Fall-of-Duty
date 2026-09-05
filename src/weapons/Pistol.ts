@@ -1,10 +1,11 @@
-import { Scene, Vector3 } from "@babylonjs/core";
-import { Input } from "../engine/Input";
-import { CameraRig } from "../player/CameraRig";
+import type { Scene } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core";
+import type { Input } from "../engine/Input";
+import type { CameraRig } from "../player/CameraRig";
 import { ADSAnimator } from "./ADSAnimator";
 import { fireHitscanRay } from "./WeaponTypes";
 import type { Weapon, WeaponConfig, WeaponState } from "./WeaponTypes";
-import { Effects } from "../rendering/Effects";
+import type { Effects } from "../rendering/Effects";
 import { weaponAdsFrames, weaponConfig } from "./WeaponData";
 
 type ReloadEvent = { time: number; kind: "magOut" | "magIn" | "slideRelease" };
@@ -70,8 +71,7 @@ export class Pistol implements Weapon {
   ): void {
     // 1. ADS input — same bindings as the rifle (Space / right mouse)
     const canAds = this.state === "idle" || this.state === "empty";
-    this.isAiming =
-      inputEnabled && (input.isKeyDown("Space") || input.isMouseButtonDown(2)) && canAds;
+    this.isAiming = inputEnabled && (input.isKeyDown("Space") || input.isMouseButtonDown(2)) && canAds;
 
     this.adsAnimator.update(deltaTime, this.isAiming, canAds);
     cameraRig.setFov(this.adsAnimator.getInterpolatedState().fov);
@@ -126,12 +126,7 @@ export class Pistol implements Weapon {
       }
     }
 
-    if (
-      canUseTrigger &&
-      input.isKeyPressed("KeyR") &&
-      this.clipAmmo < this.config.magSize &&
-      this.reserveAmmo > 0
-    ) {
+    if (canUseTrigger && input.isKeyPressed("KeyR") && this.clipAmmo < this.config.magSize && this.reserveAmmo > 0) {
       this.startReload();
     }
   }

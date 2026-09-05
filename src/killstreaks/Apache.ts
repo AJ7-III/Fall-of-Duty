@@ -1,5 +1,5 @@
-import { Mesh, MeshBuilder, StandardMaterial, Color3, TransformNode, Vector3 } from "@babylonjs/core";
-import type { Scene } from "@babylonjs/core";
+import { MeshBuilder, StandardMaterial, Color3, TransformNode, Vector3 } from "@babylonjs/core";
+import type { Scene, Mesh } from "@babylonjs/core";
 import { BotNav } from "../bots/BotNav";
 import type { Bot } from "../bots/Bot";
 import type { Effects } from "../rendering/Effects";
@@ -74,7 +74,17 @@ export class Apache {
     this.body = new TransformNode("apacheBody", scene);
     this.body.parent = this.root;
 
-    const piece = (m: Mesh, mat: StandardMaterial, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, parent: TransformNode = this.body): Mesh => {
+    const piece = (
+      m: Mesh,
+      mat: StandardMaterial,
+      x: number,
+      y: number,
+      z: number,
+      rx = 0,
+      ry = 0,
+      rz = 0,
+      parent: TransformNode = this.body
+    ): Mesh => {
       m.material = mat;
       m.parent = parent;
       m.position.set(x, y, z);
@@ -85,9 +95,17 @@ export class Apache {
 
     // Fuselage: slim attack-helo profile — narrow body, stepped canopy,
     // stub wings with rocket pods, boom out to the tail fin
-    const fuselage = MeshBuilder.CreateCapsule("apacheFuselage", {
-      radius: 0.52, height: 3.4, tessellation: 12, capSubdivisions: 4, orientation: new Vector3(0, 0, 1),
-    }, scene);
+    const fuselage = MeshBuilder.CreateCapsule(
+      "apacheFuselage",
+      {
+        radius: 0.52,
+        height: 3.4,
+        tessellation: 12,
+        capSubdivisions: 4,
+        orientation: new Vector3(0, 0, 1),
+      },
+      scene
+    );
     fuselage.scaling.set(0.72, 0.82, 1);
     piece(fuselage, hull, 0, 0, 0.1);
     const canopy = MeshBuilder.CreateSphere("apacheCanopy", { diameter: 0.78, segments: 8 }, scene);
@@ -99,7 +117,14 @@ export class Apache {
       const pod = MeshBuilder.CreateCylinder("apachePod" + side, { diameter: 0.24, height: 0.78, tessellation: 10 }, scene);
       piece(pod, dark, side * 1.1, -0.16, 0.25, Math.PI / 2);
     }
-    piece(MeshBuilder.CreateCylinder("apacheBoom", { diameterTop: 0.18, diameterBottom: 0.34, height: 2.5, tessellation: 10 }, scene), hull, 0, 0.06, -2.55, Math.PI / 2);
+    piece(
+      MeshBuilder.CreateCylinder("apacheBoom", { diameterTop: 0.18, diameterBottom: 0.34, height: 2.5, tessellation: 10 }, scene),
+      hull,
+      0,
+      0.06,
+      -2.55,
+      Math.PI / 2
+    );
     piece(MeshBuilder.CreateBox("apacheFin", { width: 0.06, height: 0.78, depth: 0.42 }, scene), hull, 0, 0.3, -3.6);
     piece(MeshBuilder.CreateBox("apacheTailPlane", { width: 0.9, height: 0.05, depth: 0.3 }, scene), hull, 0, 0.12, -3.3);
 
@@ -107,21 +132,81 @@ export class Apache {
     this.gun = new TransformNode("apacheGun", scene);
     this.gun.parent = this.body;
     this.gun.position.set(0, -0.52, 1.35);
-    piece(MeshBuilder.CreateCylinder("apacheGunBarrel", { diameter: 0.1, height: 0.75, tessellation: 8 }, scene), dark, 0, 0, 0.18, Math.PI / 2, 0, 0, this.gun);
+    piece(
+      MeshBuilder.CreateCylinder("apacheGunBarrel", { diameter: 0.1, height: 0.75, tessellation: 8 }, scene),
+      dark,
+      0,
+      0,
+      0.18,
+      Math.PI / 2,
+      0,
+      0,
+      this.gun
+    );
 
     // Rotors: a two-blade cross up top, small disc on the tail — they spin
     // every frame the airframe exists, which is most of what sells "helicopter"
     this.mainRotor = new TransformNode("apacheRotor", scene);
     this.mainRotor.parent = this.body;
     this.mainRotor.position.set(0, 0.86, 0);
-    piece(MeshBuilder.CreateCylinder("apacheHub", { diameter: 0.22, height: 0.18, tessellation: 8 }, scene), dark, 0, -0.04, 0, 0, 0, 0, this.mainRotor);
-    piece(MeshBuilder.CreateBox("apacheBladeA", { width: 0.17, height: 0.025, depth: 5.4 }, scene), dark, 0, 0, 0, 0, 0, 0, this.mainRotor);
-    piece(MeshBuilder.CreateBox("apacheBladeB", { width: 0.17, height: 0.025, depth: 5.4 }, scene), dark, 0, 0, 0, 0, Math.PI / 2, 0, this.mainRotor);
+    piece(
+      MeshBuilder.CreateCylinder("apacheHub", { diameter: 0.22, height: 0.18, tessellation: 8 }, scene),
+      dark,
+      0,
+      -0.04,
+      0,
+      0,
+      0,
+      0,
+      this.mainRotor
+    );
+    piece(
+      MeshBuilder.CreateBox("apacheBladeA", { width: 0.17, height: 0.025, depth: 5.4 }, scene),
+      dark,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      this.mainRotor
+    );
+    piece(
+      MeshBuilder.CreateBox("apacheBladeB", { width: 0.17, height: 0.025, depth: 5.4 }, scene),
+      dark,
+      0,
+      0,
+      0,
+      0,
+      Math.PI / 2,
+      0,
+      this.mainRotor
+    );
     this.tailRotor = new TransformNode("apacheTailRotor", scene);
     this.tailRotor.parent = this.body;
     this.tailRotor.position.set(0.14, 0.3, -3.62);
-    piece(MeshBuilder.CreateBox("apacheTailBladeA", { width: 0.03, height: 1.05, depth: 0.1 }, scene), dark, 0, 0, 0, 0, 0, 0, this.tailRotor);
-    piece(MeshBuilder.CreateBox("apacheTailBladeB", { width: 0.03, height: 0.1, depth: 1.05 }, scene), dark, 0, 0, 0, 0, 0, 0, this.tailRotor);
+    piece(
+      MeshBuilder.CreateBox("apacheTailBladeA", { width: 0.03, height: 1.05, depth: 0.1 }, scene),
+      dark,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      this.tailRotor
+    );
+    piece(
+      MeshBuilder.CreateBox("apacheTailBladeB", { width: 0.03, height: 0.1, depth: 1.05 }, scene),
+      dark,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      this.tailRotor
+    );
 
     this.root.setEnabled(false);
   }
@@ -265,9 +350,7 @@ export class Apache {
     }
 
     // rotor wash in the player's ears, by distance
-    const pd = Math.sqrt(
-      (pos.x - playerPos.x) ** 2 + (pos.y - playerPos.y) ** 2 + (pos.z - playerPos.z) ** 2
-    );
+    const pd = Math.sqrt((pos.x - playerPos.x) ** 2 + (pos.y - playerPos.y) ** 2 + (pos.z - playerPos.z) ** 2);
     effects.setRotorVolume(Math.min(0.55, 1.5 / (1 + pd * 0.055)));
 
     // ----------------------------------------------------------- time's up
@@ -318,9 +401,7 @@ export class Apache {
 
     effects.createTracer(gunPos, end);
     effects.createMuzzleFlash(gunPos, 0.9);
-    const pd = Math.sqrt(
-      (gunPos.x - playerPos.x) ** 2 + (gunPos.y - playerPos.y) ** 2 + (gunPos.z - playerPos.z) ** 2
-    );
+    const pd = Math.sqrt((gunPos.x - playerPos.x) ** 2 + (gunPos.y - playerPos.y) ** 2 + (gunPos.z - playerPos.z) ** 2);
     effects.playApacheGunSound(Math.min(1, 1.6 / (1 + pd * 0.07)));
   }
 

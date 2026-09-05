@@ -1,6 +1,5 @@
 import {
   Matrix,
-  Mesh,
   MeshBuilder,
   Quaternion,
   StandardMaterial,
@@ -10,7 +9,7 @@ import {
   TransformNode,
   Vector3,
 } from "@babylonjs/core";
-import type { AbstractMesh, AnimationGroup, AssetContainer, Material, Observer, PBRMaterial, Scene } from "@babylonjs/core";
+import type { AbstractMesh, AnimationGroup, AssetContainer, Material, Observer, PBRMaterial, Scene, Mesh } from "@babylonjs/core";
 import { whenSoldierModelReady } from "./SoldierAssets";
 import { terminatorSkin } from "./TerminatorSkin";
 import { assetUrl } from "../assets/paths";

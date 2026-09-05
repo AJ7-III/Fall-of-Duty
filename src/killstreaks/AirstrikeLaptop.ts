@@ -1,7 +1,7 @@
 import { Mesh, MeshBuilder, StandardMaterial, Color3, DynamicTexture, TransformNode } from "@babylonjs/core";
 import type { FreeCamera, Scene } from "@babylonjs/core";
 import { PlayerController } from "../player/PlayerController";
-import { Input } from "../engine/Input";
+import type { Input } from "../engine/Input";
 import type { Bot } from "../bots/Bot";
 
 // The Fall of Duty airstrike ritual: press 4 and the rifle drops out of frame while
@@ -76,21 +76,39 @@ export class AirstrikeLaptop {
     const keysMat = new StandardMaterial("laptopKeysMat", scene);
     keysMat.diffuseTexture = keysTex;
     keysMat.specularColor = Color3.Black();
-    const keys = piece(MeshBuilder.CreatePlane("laptopKeys", { width: 0.34, height: 0.22 }, scene), keysMat, this.root, 0, 0.0115, 0);
+    const keys = piece(
+      MeshBuilder.CreatePlane("laptopKeys", { width: 0.34, height: 0.22 }, scene),
+      keysMat,
+      this.root,
+      0,
+      0.0115,
+      0
+    );
     keys.rotation.x = Math.PI / 2;
 
     // Lid: hinged at the back edge, screen plane glowing on its inner face
     this.lid = new TransformNode("laptopLid", scene);
     this.lid.parent = this.root;
     this.lid.position.set(0, 0.011, 0.118);
-    piece(MeshBuilder.CreateBox("laptopLidShell", { width: 0.36, height: 0.255, depth: 0.014 }, scene), body, this.lid, 0, 0.117, 0.004);
+    piece(
+      MeshBuilder.CreateBox("laptopLidShell", { width: 0.36, height: 0.255, depth: 0.014 }, scene),
+      body,
+      this.lid,
+      0,
+      0.117,
+      0.004
+    );
     this.screenTex = new DynamicTexture("laptopScreenTex", { width: TEX_W, height: TEX_H }, scene, false);
     const screenMat = new StandardMaterial("laptopScreenMat", scene);
     screenMat.emissiveTexture = this.screenTex;
     screenMat.diffuseColor = Color3.Black();
     screenMat.specularColor = Color3.Black();
     screenMat.disableLighting = true;
-    const screen = MeshBuilder.CreatePlane("laptopScreen", { width: 0.325, height: 0.215, sideOrientation: Mesh.DOUBLESIDE }, scene);
+    const screen = MeshBuilder.CreatePlane(
+      "laptopScreen",
+      { width: 0.325, height: 0.215, sideOrientation: Mesh.DOUBLESIDE },
+      scene
+    );
     piece(screen, screenMat, this.lid, 0, 0.117, -0.0045);
     this.lid.rotation.x = 1.45; // folded shut until raised
 
@@ -223,9 +241,15 @@ export class AirstrikeLaptop {
     c.lineWidth = 1;
     for (let g = 0; g <= 8; g++) {
       const p = MAP_X + (MAP_SIDE / 8) * g;
-      c.beginPath(); c.moveTo(p, MAP_Y); c.lineTo(p, MAP_Y + MAP_SIDE); c.stroke();
+      c.beginPath();
+      c.moveTo(p, MAP_Y);
+      c.lineTo(p, MAP_Y + MAP_SIDE);
+      c.stroke();
       const q = MAP_Y + (MAP_SIDE / 8) * g;
-      c.beginPath(); c.moveTo(MAP_X, q); c.lineTo(MAP_X + MAP_SIDE, q); c.stroke();
+      c.beginPath();
+      c.moveTo(MAP_X, q);
+      c.lineTo(MAP_X + MAP_SIDE, q);
+      c.stroke();
     }
     c.strokeStyle = "rgba(125, 223, 168, 0.5)";
     c.lineWidth = 2;
@@ -288,8 +312,10 @@ export class AirstrikeLaptop {
       c.stroke();
       c.lineWidth = 2;
       c.beginPath();
-      c.moveTo(this.cursorX - 10, this.cursorY); c.lineTo(this.cursorX + 10, this.cursorY);
-      c.moveTo(this.cursorX, this.cursorY - 10); c.lineTo(this.cursorX, this.cursorY + 10);
+      c.moveTo(this.cursorX - 10, this.cursorY);
+      c.lineTo(this.cursorX + 10, this.cursorY);
+      c.moveTo(this.cursorX, this.cursorY - 10);
+      c.lineTo(this.cursorX, this.cursorY + 10);
       c.stroke();
     }
 

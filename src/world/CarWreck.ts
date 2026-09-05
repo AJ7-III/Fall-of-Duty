@@ -1,16 +1,7 @@
-import {
-  Scene,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  Color3,
-  Vector3,
-  TransformNode,
-  ParticleSystem,
-} from "@babylonjs/core";
-import type { AbstractMesh, PickingInfo } from "@babylonjs/core";
-import { WorldMaterials } from "./materials/WorldMaterials";
-import { Effects } from "../rendering/Effects";
+import { MeshBuilder, Color3, Vector3, TransformNode } from "@babylonjs/core";
+import type { AbstractMesh, PickingInfo, Scene, Mesh, StandardMaterial, ParticleSystem } from "@babylonjs/core";
+import type { WorldMaterials } from "./materials/WorldMaterials";
+import type { Effects } from "../rendering/Effects";
 import type { GlassPane } from "./wreckShared";
 import {
   getOrCreateColorMat,
@@ -49,22 +40,22 @@ export class CarWreck {
     // --- Materials ---
     const paintMat = materials.createCarBodyMaterial();
 
-    const darkMat = getOrCreateColorMat(
-      scene, "carTrimDarkMat",
-      new Color3(0.07, 0.07, 0.08), new Color3(0.06, 0.06, 0.07), 16
-    );
-    const steelMat = getOrCreateColorMat(
-      scene, "carSteelMat",
-      new Color3(0.42, 0.44, 0.47), new Color3(0.5, 0.52, 0.55), 48
-    );
+    const darkMat = getOrCreateColorMat(scene, "carTrimDarkMat", new Color3(0.07, 0.07, 0.08), new Color3(0.06, 0.06, 0.07), 16);
+    const steelMat = getOrCreateColorMat(scene, "carSteelMat", new Color3(0.42, 0.44, 0.47), new Color3(0.5, 0.52, 0.55), 48);
     const lampMat = getOrCreateColorMat(
-      scene, "carLampMat",
-      new Color3(0.75, 0.78, 0.72), new Color3(0.6, 0.6, 0.6), 64,
+      scene,
+      "carLampMat",
+      new Color3(0.75, 0.78, 0.72),
+      new Color3(0.6, 0.6, 0.6),
+      64,
       new Color3(0.12, 0.12, 0.1)
     );
     const tailMat = getOrCreateColorMat(
-      scene, "carTailLampMat",
-      new Color3(0.45, 0.08, 0.07), new Color3(0.4, 0.3, 0.3), 48,
+      scene,
+      "carTailLampMat",
+      new Color3(0.45, 0.08, 0.07),
+      new Color3(0.4, 0.3, 0.3),
+      48,
       new Color3(0.1, 0.015, 0.012)
     );
 
@@ -98,7 +89,12 @@ export class CarWreck {
     }
 
     // --- Running gear ---
-    for (const [wx, wz] of [[1.45, 0.84], [1.45, -0.84], [-1.45, 0.84], [-1.45, -0.84]]) {
+    for (const [wx, wz] of [
+      [1.45, 0.84],
+      [1.45, -0.84],
+      [-1.45, 0.84],
+      [-1.45, -0.84],
+    ]) {
       const tire = MeshBuilder.CreateCylinder(`car_tire_${wx}_${wz}`, { height: 0.24, diameter: 0.62, tessellation: 18 }, scene);
       tire.position.set(wx, 0.31, wz);
       tire.rotation.x = Math.PI / 2;
@@ -111,7 +107,11 @@ export class CarWreck {
     }
 
     // --- Nose / tail dressing ---
-    const bumperF = MeshBuilder.CreateCapsule("car_bumperF", { radius: 0.075, height: 1.78, tessellation: 12, capSubdivisions: 4 }, scene);
+    const bumperF = MeshBuilder.CreateCapsule(
+      "car_bumperF",
+      { radius: 0.075, height: 1.78, tessellation: 12, capSubdivisions: 4 },
+      scene
+    );
     bumperF.position.set(2.18, 0.5, 0);
     bumperF.rotation.x = Math.PI / 2; // lie across the nose
     stat(bumperF, darkMat);
@@ -140,9 +140,11 @@ export class CarWreck {
 
     // --- Interior (visible through the glass, shootable once it breaks) ---
     const seatMat = getOrCreateColorMat(
-      scene, "carSeatMat",
+      scene,
+      "carSeatMat",
       new Color3(0.17, 0.155, 0.14), // worn cloth
-      new Color3(0.02, 0.02, 0.02), 8
+      new Color3(0.02, 0.02, 0.02),
+      8
     );
 
     box("car_dash", 0.3, 0.14, 1.38, 0.4, 0.86, 0, darkMat); // tucked under the windshield base
@@ -189,13 +191,7 @@ export class CarWreck {
   }
 
   // Laminated pane: thin slab with its own crack texture
-  private addPane(
-    name: string,
-    w: number, d: number,
-    x: number, y: number, z: number,
-    rotZ: number,
-    laminated: boolean
-  ): void {
+  private addPane(name: string, w: number, d: number, x: number, y: number, z: number, rotZ: number, laminated: boolean): void {
     const pane = MeshBuilder.CreateBox(name, { width: w, height: 0.028, depth: d }, this.scene);
     pane.position.set(x, y, z);
     pane.rotation.z = rotZ;

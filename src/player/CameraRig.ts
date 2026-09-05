@@ -1,8 +1,9 @@
-import { Scene, FreeCamera, Vector3 } from "@babylonjs/core";
+import type { Scene } from "@babylonjs/core";
+import { FreeCamera, Vector3 } from "@babylonjs/core";
 
 export class CameraRig {
   public camera: FreeCamera;
-  
+
   // Recoil offsets
   public recoilPitch: number = 0;
   public recoilYaw: number = 0;
@@ -10,7 +11,7 @@ export class CameraRig {
 
   // Settle/Recovery speeds (spring-like Fall of Duty feel)
   private recoilRecoverySpeed: number = 10; // rate of recovery
-  
+
   // Sway parameters (idle breathing sway)
   private swayTime: number = 0;
   public swayOffset: Vector3 = new Vector3();
@@ -29,7 +30,7 @@ export class CameraRig {
     this.camera = new FreeCamera("fpsCamera", new Vector3(0, 1.7, 0), scene);
     this.camera.minZ = 0.01; // Allow very close meshes (weapon viewmodel)
     this.camera.maxZ = 1000;
-    
+
     // Disable Babylon default controls since we control it manually
     this.camera.inputs.clear();
   }
@@ -63,7 +64,7 @@ export class CameraRig {
     // Reduce sway heavily when ADS (aiming down sight)
     const swayScale = isAds ? 0.05 : 0.2;
     this.swayTime += deltaTime * (isAds ? 1.0 : 1.5);
-    
+
     this.swayOffset.x = Math.sin(this.swayTime * 1.2) * 0.015 * swayScale;
     this.swayOffset.y = Math.cos(this.swayTime * 0.8) * 0.02 * swayScale;
     this.swayOffset.z = 0;

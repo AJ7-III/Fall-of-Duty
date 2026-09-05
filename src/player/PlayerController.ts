@@ -1,6 +1,6 @@
 import { Vector3 } from "@babylonjs/core";
-import { Input } from "../engine/Input";
-import { CameraRig } from "./CameraRig";
+import type { Input } from "../engine/Input";
+import type { CameraRig } from "./CameraRig";
 
 export class PlayerController {
   // Spawn in the SW corner of the yard, facing the center cross
@@ -43,7 +43,10 @@ export class PlayerController {
   // in slow motion, so this is ~4.5 real seconds) plus a beat of stillness
   private static readonly RESPAWN_DELAY = 3.2;
   private static readonly SPAWNS: ReadonlyArray<[number, number]> = [
-    [-13.5, -13.5], [13.5, 13.5], [-13.5, 13.5], [13.5, -13.5],
+    [-13.5, -13.5],
+    [13.5, 13.5],
+    [-13.5, 13.5],
+    [13.5, -13.5],
   ];
 
   public health: number = PlayerController.MAX_HEALTH;
@@ -103,23 +106,8 @@ export class PlayerController {
   }
 
   // Axis-aligned box (yaw 0) — the common case for walls and straight props
-  public static registerObstacle(
-    minX: number,
-    maxX: number,
-    minY: number,
-    maxY: number,
-    minZ: number,
-    maxZ: number
-  ): void {
-    this.registerObstacleOBB(
-      (minX + maxX) / 2,
-      (minZ + maxZ) / 2,
-      (maxX - minX) / 2,
-      (maxZ - minZ) / 2,
-      minY,
-      maxY,
-      0
-    );
+  public static registerObstacle(minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number): void {
+    this.registerObstacleOBB((minX + maxX) / 2, (minZ + maxZ) / 2, (maxX - minX) / 2, (maxZ - minZ) / 2, minY, maxY, 0);
   }
 
   // Oriented box: yaw matches the mesh's rotation.y (local +x maps to world
@@ -355,13 +343,13 @@ export class PlayerController {
     // 1. Mouse Look (only if pointer is locked, and not feeding the laptop cursor)
     if (this.input.getIsPointerLocked() && !this.lookLocked) {
       const mouseDelta = this.input.getMouseDelta();
-      
+
       // Apply sensitivity multiplier when ADS (aiming down sight)
       const currentSensitivity = this.lookSensitivity * adsSensitivityMultiplier;
-      
+
       this.yaw += mouseDelta.x * currentSensitivity;
       this.pitch += mouseDelta.y * currentSensitivity;
-      
+
       // Clamp pitch to avoid flipping upside down (-85 to +85 degrees)
       const pitchLimit = (85 * Math.PI) / 180;
       this.pitch = Math.max(-pitchLimit, Math.min(pitchLimit, this.pitch));
@@ -369,9 +357,7 @@ export class PlayerController {
 
     // 2. Stance input: tap C/Ctrl to toggle crouch; hold to drop prone.
     const stanceInputDown =
-      this.input.isKeyDown("KeyC") ||
-      this.input.isKeyDown("ControlLeft") ||
-      this.input.isKeyDown("ControlRight");
+      this.input.isKeyDown("KeyC") || this.input.isKeyDown("ControlLeft") || this.input.isKeyDown("ControlRight");
     const stancePressed = stanceInputDown && !this.stanceInputWasDown;
     const stanceReleased = !stanceInputDown && this.stanceInputWasDown;
 
@@ -394,13 +380,9 @@ export class PlayerController {
     }
     this.stanceInputWasDown = stanceInputDown;
     this.isCrouching = this.crouchToggled && !this.isProne;
-    
+
     // Smoothly interpolate eye height using robust exponential decay
-    const targetEyeHeight = this.isProne
-      ? this.proneEyeHeight
-      : this.isCrouching
-        ? this.crouchEyeHeight
-        : this.standEyeHeight;
+    const targetEyeHeight = this.isProne ? this.proneEyeHeight : this.isCrouching ? this.crouchEyeHeight : this.standEyeHeight;
     const eyeLerpFactor = 1 - Math.exp(-15 * deltaTime);
     this.currentEyeHeight += (targetEyeHeight - this.currentEyeHeight) * eyeLerpFactor;
 
@@ -491,13 +473,13 @@ export class PlayerController {
     const lookDirX = Math.sin(this.yaw) * Math.cos(-this.pitch);
     const lookDirY = Math.sin(-this.pitch);
     const lookDirZ = Math.cos(this.yaw) * Math.cos(-this.pitch);
-    
+
     cameraTargetPos.x -= lookDirX * this.cameraRig.recoilKickback;
     cameraTargetPos.y -= lookDirY * this.cameraRig.recoilKickback;
     cameraTargetPos.z -= lookDirZ * this.cameraRig.recoilKickback;
 
     this.cameraRig.camera.position.copyFrom(cameraTargetPos);
-    
+
     // Camera Rotation: pitch/yaw + recoil (subtract recoilPitch to kick camera UP)
     // + scoped figure-eight sway (affects the actual aim, like holding breath-less)
     this.cameraRig.camera.rotation.x = this.pitch - this.cameraRig.recoilPitch + this.cameraRig.scopeSwayPitch;

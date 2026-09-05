@@ -1,5 +1,5 @@
 import { PlayerController } from "../player/PlayerController";
-import { ShipBoxMap } from "../world/ShipBoxMap";
+import type { ShipBoxMap } from "../world/ShipBoxMap";
 import type { Bot } from "../bots/Bot";
 import type { ApacheRadarContact } from "../killstreaks/Apache";
 

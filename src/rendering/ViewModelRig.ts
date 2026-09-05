@@ -1,11 +1,11 @@
-import { Mesh, Ray, TransformNode, Vector3 } from "@babylonjs/core";
-import type { Scene } from "@babylonjs/core";
-import { CameraRig } from "../player/CameraRig";
+import { Ray, TransformNode, Vector3 } from "@babylonjs/core";
+import type { Scene, Mesh } from "@babylonjs/core";
+import type { CameraRig } from "../player/CameraRig";
 import { BoltActionSniper } from "../weapons/BoltActionSniper";
 import { Mp44 } from "../weapons/Mp44";
 import { Pistol } from "../weapons/Pistol";
 import type { Weapon, WeaponId } from "../weapons/WeaponTypes";
-import { Input } from "../engine/Input";
+import type { Input } from "../engine/Input";
 import { buildSniperViewModel } from "../viewmodels/SniperViewModel";
 import { buildPistolViewModel } from "../viewmodels/PistolViewModel";
 import { buildMp44ViewModel } from "../viewmodels/Mp44ViewModel";
@@ -542,7 +542,11 @@ export class ViewModelRig {
     }
 
     const bolt = vm.pivots.boltGroup;
-    bolt.position.set(this.mp44BoltBasePos.x, this.mp44BoltBasePos.y, this.mp44BoltBasePos.z - ViewModelRig.MP44_BOLT_TRAVEL * boltBack);
+    bolt.position.set(
+      this.mp44BoltBasePos.x,
+      this.mp44BoltBasePos.y,
+      this.mp44BoltBasePos.z - ViewModelRig.MP44_BOLT_TRAVEL * boltBack
+    );
 
     const mag = vm.pivots.magGroup;
     mag.setEnabled(magVisible);
@@ -565,7 +569,11 @@ export class ViewModelRig {
     // Slide rides its blowback value every frame; the lock-back on an empty
     // mag and the slam home on slide release both come through getSlideBack()
     const slideBack = weapon.getSlideBack();
-    vm.pivots.slideGroup.position.set(this.slideBasePos.x, this.slideBasePos.y, this.slideBasePos.z - ViewModelRig.SLIDE_TRAVEL * slideBack);
+    vm.pivots.slideGroup.position.set(
+      this.slideBasePos.x,
+      this.slideBasePos.y,
+      this.slideBasePos.z - ViewModelRig.SLIDE_TRAVEL * slideBack
+    );
     vm.pivots.hammerGroup.rotation.x = ViewModelRig.HAMMER_REST_ROT + ViewModelRig.HAMMER_KICK_ROT * slideBack;
 
     let armX = 0,

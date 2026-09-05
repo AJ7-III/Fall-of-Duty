@@ -1,5 +1,5 @@
-import { Mesh, TransformNode, Vector3 } from "@babylonjs/core";
-import type { Scene } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core";
+import type { Scene, Mesh, TransformNode } from "@babylonjs/core";
 import { PlayerController } from "../player/PlayerController";
 import { BotNav } from "./BotNav";
 import { BOT_WEAPONS, rangeCurve, rand, DEG } from "./BotConfig";

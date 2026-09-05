@@ -1,5 +1,5 @@
-import { Matrix, Vector3 } from "@babylonjs/core";
-import type { TransformNode } from "@babylonjs/core";
+import { EngineInstrumentation, Matrix, SceneInstrumentation, Vector3 } from "@babylonjs/core";
+import type { Scene, TransformNode } from "@babylonjs/core";
 import type { Game } from "./Game";
 import type { WeaponId } from "../weapons/WeaponTypes";
 import type { HandPose } from "../viewmodels/kit";
@@ -18,6 +18,7 @@ import type { ArmsTuning } from "../viewmodels/ArmsRig";
 //   fod.teleport(x, z, yaw) move the player
 //   fod.kill()              kill the player (plays the death cam)
 //   fod.slowmo(factor)      time scale for the live loop
+//   fod.perf(frames)        step N frames and report CPU/GPU frame time + draw calls
 //   fod.inspect(yaw, pitch, focus)  orbit the whole first-person rig around a
 //                           camera-space point (default: the weapon) to see
 //                           the hands from another angle; inspect() resets
@@ -39,6 +40,7 @@ export interface DevApi {
   kill(): void;
   slowmo(factor: number): void;
   inspect(yaw?: number, pitch?: number, focus?: [number, number, number]): void;
+  perf(frames?: number): Promise<{ cpuMs: number; gpuMs: number; drawCalls: number; activeMeshes: number; fpsEstimate: number }>;
 }
 
 export function installDevTools(game: Game): DevApi {
@@ -61,7 +63,7 @@ export function installDevTools(game: Game): DevApi {
       takeDamage(a: number, from: unknown): void;
     };
     time: { scale: number };
-    scene: { meshes: Array<{ isEnabled(): boolean; isVisible: boolean; isReady(complete: boolean): boolean }> };
+    scene: Scene;
   };
   const ORDER: WeaponId[] = ["mp44", "m40a3", "usp45"];
   const api: DevApi = {
@@ -121,6 +123,34 @@ export function installDevTools(game: Game): DevApi {
     },
     slowmo(factor) {
       g.time.scale = factor;
+    },
+    async perf(frames = 120) {
+      // GPU timing needs the disjoint timer query extension; when the
+      // browser withholds it the gpuMs field stays at 0
+      const engineI = new EngineInstrumentation(g.scene.getEngine());
+      engineI.captureGPUFrameTime = true;
+      const sceneI = new SceneInstrumentation(g.scene);
+      sceneI.captureFrameTime = true;
+      game.stepFrames(10, 1 / 60); // warm the counters
+      await new Promise((r) => setTimeout(r, 50));
+      engineI.gpuFrameTimeCounter.fetchNewFrame();
+      sceneI.frameTimeCounter.fetchNewFrame();
+      const t0 = performance.now();
+      game.stepFrames(frames, 1 / 60);
+      const cpuMs = (performance.now() - t0) / frames;
+      await new Promise((r) => setTimeout(r, 100));
+      game.stepFrames(1, 1 / 60);
+      const gpuMs = engineI.gpuFrameTimeCounter.average / 1e6;
+      const result = {
+        cpuMs: +cpuMs.toFixed(2),
+        gpuMs: +gpuMs.toFixed(2),
+        drawCalls: sceneI.drawCallsCounter.current,
+        activeMeshes: g.scene.getActiveMeshes().length,
+        fpsEstimate: Math.round(1000 / Math.max(cpuMs, gpuMs, 0.1)),
+      };
+      engineI.dispose();
+      sceneI.dispose();
+      return result;
     },
     inspect(yaw = 0, pitch = 0, focus = [0.19, -0.265, 0.55]) {
       const pivot = g.viewModelRig.pivot;

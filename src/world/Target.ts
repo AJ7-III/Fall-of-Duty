@@ -1,5 +1,6 @@
-import { Scene, Mesh, MeshBuilder, Vector3, Vector2, DynamicTexture } from "@babylonjs/core";
-import { WorldMaterials } from "./materials/WorldMaterials";
+import type { Scene, Vector3, Vector2, DynamicTexture } from "@babylonjs/core";
+import { Mesh, MeshBuilder } from "@babylonjs/core";
+import type { WorldMaterials } from "./materials/WorldMaterials";
 
 export class Target {
   public mesh: Mesh;

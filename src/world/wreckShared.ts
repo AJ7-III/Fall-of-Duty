@@ -1,18 +1,7 @@
-import {
-  Scene,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  DynamicTexture,
-  Color3,
-  Color4,
-  Vector3,
-  TransformNode,
-  ParticleSystem,
-} from "@babylonjs/core";
-import type { AbstractMesh, PickingInfo } from "@babylonjs/core";
-import { WorldMaterials } from "./materials/WorldMaterials";
-import { Effects } from "../rendering/Effects";
+import { MeshBuilder, StandardMaterial, DynamicTexture, Color3, Color4, Vector3, ParticleSystem } from "@babylonjs/core";
+import type { AbstractMesh, PickingInfo, Scene, Mesh, TransformNode } from "@babylonjs/core";
+import type { WorldMaterials } from "./materials/WorldMaterials";
+import type { Effects } from "../rendering/Effects";
 
 // Plumbing shared by CarWreck and TruckWreck. The two wrecks build different
 // shells but use the same scene-cached trim materials, the same static-mesh
@@ -67,8 +56,12 @@ export function makeStaticHelpers(
   stat: (mesh: Mesh, mat: StandardMaterial) => Mesh;
   box: (
     name: string,
-    w: number, h: number, d: number,
-    x: number, y: number, z: number,
+    w: number,
+    h: number,
+    d: number,
+    x: number,
+    y: number,
+    z: number,
     mat: StandardMaterial,
     rotZ?: number
   ) => Mesh;
@@ -82,8 +75,12 @@ export function makeStaticHelpers(
   };
   const box = (
     name: string,
-    w: number, h: number, d: number,
-    x: number, y: number, z: number,
+    w: number,
+    h: number,
+    d: number,
+    x: number,
+    y: number,
+    z: number,
     mat: StandardMaterial,
     rotZ: number = 0
   ): Mesh => {
@@ -122,8 +119,11 @@ export function addTemperedPane(
   instance: unknown,
   panes: Map<AbstractMesh, GlassPane>,
   name: string,
-  w: number, h: number,
-  x: number, y: number, z: number
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  z: number
 ): void {
   let mat = scene.getMaterialByName("carSideGlassMat") as StandardMaterial | null;
   if (!mat) {
@@ -146,7 +146,8 @@ export function addTemperedPane(
 
 function paintGlassBase(tex: DynamicTexture): void {
   const ctx = tex.getContext() as CanvasRenderingContext2D;
-  const w = 256, h = 128;
+  const w = 256,
+    h = 128;
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, "#8fa3ad");
   g.addColorStop(0.55, "#6f8089");
@@ -207,12 +208,7 @@ function paintCrack(tex: DynamicTexture, u: number, v: number): void {
 
 // Shard burst shared by every pane of a wreck: manual-emit only, parked on a
 // movable anchor that hitGlassPane drags to whichever pane just broke.
-export function createGlassShardSystem(
-  scene: Scene,
-  materials: WorldMaterials,
-  name: string,
-  anchor: Vector3
-): ParticleSystem {
+export function createGlassShardSystem(scene: Scene, materials: WorldMaterials, name: string, anchor: Vector3): ParticleSystem {
   const shards = new ParticleSystem(name, 400, scene);
   shards.particleTexture = materials.createRainStreakTexture(); // small pale sliver reads as glass
   shards.emitter = anchor;

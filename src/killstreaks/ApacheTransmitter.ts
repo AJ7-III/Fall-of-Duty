@@ -1,5 +1,5 @@
-import { Mesh, MeshBuilder, StandardMaterial, Color3, TransformNode } from "@babylonjs/core";
-import type { FreeCamera, Scene } from "@babylonjs/core";
+import { MeshBuilder, StandardMaterial, Color3, TransformNode } from "@babylonjs/core";
+import type { FreeCamera, Scene, Mesh } from "@babylonjs/core";
 
 type TransmitterPhase = "away" | "raising" | "arming" | "lowering";
 
@@ -44,29 +44,68 @@ export class ApacheTransmitter {
       return m;
     };
 
-    piece(MeshBuilder.CreateBox("apacheTxBody", { width: 0.2, height: 0.3, depth: 0.075 }, scene), casing, this.root, 0.04, 0.02, 0);
-    piece(MeshBuilder.CreateBox("apacheTxGrip", { width: 0.16, height: 0.16, depth: 0.09 }, scene), rubber, this.root, 0.04, -0.18, 0);
-    piece(MeshBuilder.CreateBox("apacheTxScreen", { width: 0.13, height: 0.06, depth: 0.008 }, scene), amber, this.root, 0.04, 0.09, -0.042);
+    piece(
+      MeshBuilder.CreateBox("apacheTxBody", { width: 0.2, height: 0.3, depth: 0.075 }, scene),
+      casing,
+      this.root,
+      0.04,
+      0.02,
+      0
+    );
+    piece(
+      MeshBuilder.CreateBox("apacheTxGrip", { width: 0.16, height: 0.16, depth: 0.09 }, scene),
+      rubber,
+      this.root,
+      0.04,
+      -0.18,
+      0
+    );
+    piece(
+      MeshBuilder.CreateBox("apacheTxScreen", { width: 0.13, height: 0.06, depth: 0.008 }, scene),
+      amber,
+      this.root,
+      0.04,
+      0.09,
+      -0.042
+    );
     const antenna = MeshBuilder.CreateCylinder("apacheTxAntenna", { diameter: 0.012, height: 0.33, tessellation: 8 }, scene);
     piece(antenna, rubber, this.root, 0.12, 0.28, 0);
     antenna.rotation.z = -0.22;
 
     this.button = new TransformNode("apacheTxButton", scene);
     this.button.parent = this.root;
-    piece(MeshBuilder.CreateCylinder("apacheTxButtonCap", { diameter: 0.055, height: 0.018, tessellation: 14 }, scene), amber, this.button, 0, 0, -0.045);
+    piece(
+      MeshBuilder.CreateCylinder("apacheTxButtonCap", { diameter: 0.055, height: 0.018, tessellation: 14 }, scene),
+      amber,
+      this.button,
+      0,
+      0,
+      -0.045
+    );
     this.button.position.set(-0.03, -0.02, 0);
     this.button.rotation.x = Math.PI / 2;
 
     // Minimal hand silhouette: a palm behind the unit and a thumb over the
     // button. Enough motion to read as "pressed by hand" without building a
     // full second set of arms.
-    piece(MeshBuilder.CreateBox("apacheTxPalm", { width: 0.23, height: 0.13, depth: 0.1 }, scene), skin, this.root, -0.04, -0.18, 0.035);
-    const thumb = MeshBuilder.CreateCapsule("apacheTxThumb", {
-      radius: 0.022,
-      height: 0.17,
-      tessellation: 8,
-      capSubdivisions: 3,
-    }, scene);
+    piece(
+      MeshBuilder.CreateBox("apacheTxPalm", { width: 0.23, height: 0.13, depth: 0.1 }, scene),
+      skin,
+      this.root,
+      -0.04,
+      -0.18,
+      0.035
+    );
+    const thumb = MeshBuilder.CreateCapsule(
+      "apacheTxThumb",
+      {
+        radius: 0.022,
+        height: 0.17,
+        tessellation: 8,
+        capSubdivisions: 3,
+      },
+      scene
+    );
     piece(thumb, skin, this.button, -0.035, 0.006, -0.01);
     thumb.rotation.z = 1.1;
   }

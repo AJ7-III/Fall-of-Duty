@@ -4,6 +4,7 @@ import { TERMINATOR_LEVEL, difficultyLevelName } from "../bots/BotConfig";
 import { StartCharacterPreview } from "./StartCharacterPreview";
 import { getUserDisplayName, normalizeUserDisplayName, RIVAL_DISPLAY_NAME, setUserDisplayName } from "./MatchNames";
 import { Settings } from "./Settings";
+import type { GraphicsQuality } from "./Settings";
 
 // All the "game" around the gunplay: the YOU/OPFOR scoreboard, kill banners
 // and floating score popups, killstreak callouts, the kill feed, the pause
@@ -19,11 +20,21 @@ export interface MatchUICallbacks {
   onPlayAgain: () => void;
   onDifficultyChange: (level: number) => void;
   onToggleTrashTalk: (muted: boolean) => void;
+  onGraphicsChange: (quality: GraphicsQuality) => void;
 }
 
+const QUALITY_DESC: Record<GraphicsQuality, string> = {
+  high: "Native resolution · 4× MSAA · ambient occlusion · sharpen",
+  balanced: "1.5× resolution cap · 2× MSAA + FXAA · sharpen",
+  performance: "1× resolution · FXAA · for laptops and integrated GPUs",
+};
+
 const WEAPON_NAMES: Record<string, string> = {
-  mp44: "MP44", usp45: "USP .45", m40a3: "M40A3",
-  airstrike: "AIRSTRIKE", apache: "APACHE",
+  mp44: "MP44",
+  usp45: "USP .45",
+  m40a3: "M40A3",
+  airstrike: "AIRSTRIKE",
+  apache: "APACHE",
 };
 
 // Streak callouts — the Fall of Duty reward ladder (Killstreaks delivers the goods;
@@ -72,11 +83,14 @@ export class MatchUI {
 
   // "Mute Trash Talk" toggles — one on the start menu, one in the pause menu;
   // both reflect (and write) the same persisted setting.
-  private trashToggleEls = [
-    document.getElementById("btn-trash-start"),
-    document.getElementById("btn-trash-pause"),
-  ];
+  private trashToggleEls = [document.getElementById("btn-trash-start"), document.getElementById("btn-trash-pause")];
   private trashTalkMuted = Settings.getTrashTalkMuted();
+
+  // Graphics quality pickers — start screen and pause menu, same setting
+  private qualityPickers = Array.from(document.querySelectorAll<HTMLElement>("[data-quality-picker]"));
+  private qualityDescs = Array.from(document.querySelectorAll<HTMLElement>("[data-quality-desc]"));
+  private toastEl = document.getElementById("hud-toast");
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   private lastYou = -1;
   private lastEnemy = -1;
@@ -147,8 +161,39 @@ export class MatchUI {
     }
     this.renderTrashTalk();
 
+    for (const picker of this.qualityPickers) {
+      picker.addEventListener("click", (event) => {
+        const btn = (event.target as HTMLElement).closest<HTMLElement>("[data-quality]");
+        const quality = btn?.dataset.quality as GraphicsQuality | undefined;
+        if (!quality) return;
+        this.renderGraphics(quality);
+        callbacks.onGraphicsChange(quality);
+      });
+    }
+    this.renderGraphics(Settings.getGraphicsQuality());
+
     MatchEvents.on("kill", (e) => this.onKill(e.headshot, e.cause));
     MatchEvents.on("playerDeath", (e) => this.onPlayerDeath(e.weaponId, e.self ?? false));
+  }
+
+  // ---------------------------------------------------------------- graphics
+
+  public renderGraphics(quality: GraphicsQuality): void {
+    for (const picker of this.qualityPickers) {
+      for (const btn of picker.querySelectorAll<HTMLElement>("[data-quality]")) {
+        btn.setAttribute("aria-checked", btn.dataset.quality === quality ? "true" : "false");
+      }
+    }
+    for (const el of this.qualityDescs) el.innerText = QUALITY_DESC[quality];
+  }
+
+  // A short notice over the HUD (the automatic quality step-down uses it)
+  public toast(text: string, ms: number = 4000): void {
+    if (!this.toastEl) return;
+    this.toastEl.innerText = text;
+    this.toastEl.classList.remove("hidden");
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.toastEl?.classList.add("hidden"), ms);
   }
 
   // ------------------------------------------------------------- scoreboard
@@ -178,7 +223,7 @@ export class MatchUI {
     this.totalScore += points;
 
     // streak kills credit the streak in the feed, not whatever gun is in hand
-    const weapon = cause === "player" ? WEAPON_NAMES[this.getPlayerWeaponId()] ?? "—" : WEAPON_NAMES[cause];
+    const weapon = cause === "player" ? (WEAPON_NAMES[this.getPlayerWeaponId()] ?? "—") : WEAPON_NAMES[cause];
     this.banner(headshot ? "HEADSHOT" : "ENEMY DOWN", headshot);
     this.floatPoints(`+${points}`, headshot);
     this.addFeedRow(getUserDisplayName(), weapon, "OPFOR", false);
@@ -293,9 +338,7 @@ export class MatchUI {
 
     if (this.endSubtitleEl) {
       this.endSubtitleEl.innerText =
-        result === "victory" ? "ENEMY FORCE ELIMINATED"
-        : result === "defeat" ? "YOU WERE ELIMINATED"
-        : "STALEMATE — NO WINNER";
+        result === "victory" ? "ENEMY FORCE ELIMINATED" : result === "defeat" ? "YOU WERE ELIMINATED" : "STALEMATE — NO WINNER";
     }
 
     // Winner pill rides whichever side took the match
@@ -321,23 +364,28 @@ export class MatchUI {
 
     if (this.endVerdictEl) {
       this.endVerdictEl.innerText =
-        result === "victory" ? `You outgunned ${RIVAL_DISPLAY_NAME}.`
-        : result === "defeat" ? `${RIVAL_DISPLAY_NAME} got the better of you.`
-        : `Neither side broke.`;
+        result === "victory"
+          ? `You outgunned ${RIVAL_DISPLAY_NAME}.`
+          : result === "defeat"
+            ? `${RIVAL_DISPLAY_NAME} got the better of you.`
+            : `Neither side broke.`;
     }
 
     const kd = enemy === 0 ? you.toFixed(2) : (you / enemy).toFixed(2);
     if (this.endStatsEl) {
-      this.endStatsEl.innerHTML = ([
-        ["KILLS", you, 0],
-        ["DEATHS", enemy, 0],
-        ["K / D", kd, 2],
-        ["HEADSHOTS", this.headshots, 0],
-        ["BEST STREAK", this.bestStreak, 0],
-        ["SCORE", this.totalScore, 0],
-      ] as ReadonlyArray<[string, number | string, number]>)
-        .map(([k, v, d]) =>
-          `<div class="stat"><span class="stat-v" data-count="${v}" data-decimals="${d}">${d ? (0).toFixed(d) : 0}</span><span class="stat-k">${k}</span></div>`
+      this.endStatsEl.innerHTML = (
+        [
+          ["KILLS", you, 0],
+          ["DEATHS", enemy, 0],
+          ["K / D", kd, 2],
+          ["HEADSHOTS", this.headshots, 0],
+          ["BEST STREAK", this.bestStreak, 0],
+          ["SCORE", this.totalScore, 0],
+        ] as ReadonlyArray<[string, number | string, number]>
+      )
+        .map(
+          ([k, v, d]) =>
+            `<div class="stat"><span class="stat-v" data-count="${v}" data-decimals="${d}">${d ? (0).toFixed(d) : 0}</span><span class="stat-k">${k}</span></div>`
         )
         .join("");
     }
@@ -421,13 +469,17 @@ export class MatchUI {
   }
 
   private escapeHtml(value: string): string {
-    return value.replace(/[&<>"']/g, (char) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    })[char]!);
+    return value.replace(
+      /[&<>"']/g,
+      (char) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[char]!
+    );
   }
 
   private renderDifficulty(level: number): void {

@@ -1,16 +1,7 @@
-import {
-  Scene,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  Color3,
-  Vector3,
-  TransformNode,
-  ParticleSystem,
-} from "@babylonjs/core";
-import type { AbstractMesh, PickingInfo } from "@babylonjs/core";
-import { WorldMaterials } from "./materials/WorldMaterials";
-import { Effects } from "../rendering/Effects";
+import { MeshBuilder, Color3, Vector3, TransformNode } from "@babylonjs/core";
+import type { AbstractMesh, PickingInfo, Scene, Mesh, StandardMaterial, ParticleSystem } from "@babylonjs/core";
+import type { WorldMaterials } from "./materials/WorldMaterials";
+import type { Effects } from "../rendering/Effects";
 import type { GlassPane } from "./wreckShared";
 import {
   getOrCreateColorMat,
@@ -51,32 +42,31 @@ export class TruckWreck {
     const boxMat = materials.createContainerMaterial("truckbox", "#cfd3cc", "#b9bdb6");
 
     const cabMat = getOrCreateColorMat(
-      scene, "truckCabMat",
+      scene,
+      "truckCabMat",
       new Color3(0.78, 0.79, 0.76), // dirtier white than the box
-      new Color3(0.22, 0.23, 0.24), 32
+      new Color3(0.22, 0.23, 0.24),
+      32
     );
-    const darkMat = getOrCreateColorMat(
-      scene, "carTrimDarkMat",
-      new Color3(0.07, 0.07, 0.08), new Color3(0.06, 0.06, 0.07), 16
-    );
-    const steelMat = getOrCreateColorMat(
-      scene, "carSteelMat",
-      new Color3(0.42, 0.44, 0.47), new Color3(0.5, 0.52, 0.55), 48
-    );
+    const darkMat = getOrCreateColorMat(scene, "carTrimDarkMat", new Color3(0.07, 0.07, 0.08), new Color3(0.06, 0.06, 0.07), 16);
+    const steelMat = getOrCreateColorMat(scene, "carSteelMat", new Color3(0.42, 0.44, 0.47), new Color3(0.5, 0.52, 0.55), 48);
     const lampMat = getOrCreateColorMat(
-      scene, "carLampMat",
-      new Color3(0.75, 0.78, 0.72), new Color3(0.6, 0.6, 0.6), 64,
+      scene,
+      "carLampMat",
+      new Color3(0.75, 0.78, 0.72),
+      new Color3(0.6, 0.6, 0.6),
+      64,
       new Color3(0.12, 0.12, 0.1)
     );
     const tailMat = getOrCreateColorMat(
-      scene, "carTailLampMat",
-      new Color3(0.45, 0.08, 0.07), new Color3(0.4, 0.3, 0.3), 48,
+      scene,
+      "carTailLampMat",
+      new Color3(0.45, 0.08, 0.07),
+      new Color3(0.4, 0.3, 0.3),
+      48,
       new Color3(0.1, 0.015, 0.012)
     );
-    const seatMat = getOrCreateColorMat(
-      scene, "carSeatMat",
-      new Color3(0.17, 0.155, 0.14), new Color3(0.02, 0.02, 0.02), 8
-    );
+    const seatMat = getOrCreateColorMat(scene, "carSeatMat", new Color3(0.17, 0.155, 0.14), new Color3(0.02, 0.02, 0.02), 8);
 
     // Local frame before yaw: +x is the nose, z spans the width.
     const { stat, box } = makeStaticHelpers(scene, this.root, registerStatic);
@@ -194,12 +184,7 @@ export class TruckWreck {
   }
 
   // Laminated windshield: near-vertical slab with its own crack texture
-  private addWindshield(
-    name: string,
-    x: number, y: number,
-    h: number, span: number,
-    rotZ: number
-  ): void {
+  private addWindshield(name: string, x: number, y: number, h: number, span: number, rotZ: number): void {
     const pane = MeshBuilder.CreateBox(name, { width: 0.028, height: h, depth: span }, this.scene);
     pane.position.set(x, y, 0);
     pane.rotation.z = rotZ;

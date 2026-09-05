@@ -1,4 +1,4 @@
-import { Vector3 } from "@babylonjs/core";
+import type { Vector3 } from "@babylonjs/core";
 import { PlayerController } from "../player/PlayerController";
 
 // Spatial intelligence for the bots, derived entirely from the SAME oriented
@@ -51,8 +51,14 @@ class BotNavSystem {
   // Call once, after the map has registered all of its collision boxes.
   public build(): void {
     this.boxes = PlayerController.getObstacles().map((o) => ({
-      cx: o.cx, cz: o.cz, hw: o.hw, hd: o.hd, minY: o.minY, maxY: o.maxY,
-      cos: Math.cos(o.yaw), sin: Math.sin(o.yaw),
+      cx: o.cx,
+      cz: o.cz,
+      hw: o.hw,
+      hd: o.hd,
+      minY: o.minY,
+      maxY: o.maxY,
+      cos: Math.cos(o.yaw),
+      sin: Math.sin(o.yaw),
     }));
 
     this.side = Math.round((GRID_HALF * 2) / GRID_STEP) + 1;
@@ -139,7 +145,11 @@ class BotNavSystem {
       } else {
         let ta = (-limX - px) / dx;
         let tb = (limX - px) / dx;
-        if (ta > tb) { const s = ta; ta = tb; tb = s; }
+        if (ta > tb) {
+          const s = ta;
+          ta = tb;
+          tb = s;
+        }
         t0 = Math.max(t0, ta);
         t1 = Math.min(t1, tb);
         if (t0 > t1) continue;
@@ -149,7 +159,11 @@ class BotNavSystem {
       } else {
         let ta = (-limZ - pz) / dz;
         let tb = (limZ - pz) / dz;
-        if (ta > tb) { const s = ta; ta = tb; tb = s; }
+        if (ta > tb) {
+          const s = ta;
+          ta = tb;
+          tb = s;
+        }
         t0 = Math.max(t0, ta);
         t1 = Math.min(t1, tb);
         if (t0 > t1) continue;
@@ -188,8 +202,12 @@ class BotNavSystem {
   // Returns the smallest entry t (or Infinity) and, if a normal receiver is
   // given, the world-space normal of the face that was entered.
   private segmentHit(
-    px: number, py: number, pz: number,
-    dx: number, dy: number, dz: number,
+    px: number,
+    py: number,
+    pz: number,
+    dx: number,
+    dy: number,
+    dz: number,
     tMax: number,
     outNormal?: Vector3
   ): number {
@@ -212,9 +230,17 @@ class BotNavSystem {
       } else {
         let ta = (-b.hw - ox) / ldx;
         let tb = (b.hw - ox) / ldx;
-        let s = ldx > 0 ? -1 : 1;
-        if (ta > tb) { const w = ta; ta = tb; tb = w; }
-        if (ta > t0) { t0 = ta; axis = 0; sign = s; }
+        const s = ldx > 0 ? -1 : 1;
+        if (ta > tb) {
+          const w = ta;
+          ta = tb;
+          tb = w;
+        }
+        if (ta > t0) {
+          t0 = ta;
+          axis = 0;
+          sign = s;
+        }
         t1 = Math.min(t1, tb);
         if (t0 > t1) continue;
       }
@@ -226,9 +252,17 @@ class BotNavSystem {
       } else {
         let ta = (cy - hy - py) / dy;
         let tb = (cy + hy - py) / dy;
-        let s = dy > 0 ? -1 : 1;
-        if (ta > tb) { const w = ta; ta = tb; tb = w; }
-        if (ta > t0) { t0 = ta; axis = 1; sign = s; }
+        const s = dy > 0 ? -1 : 1;
+        if (ta > tb) {
+          const w = ta;
+          ta = tb;
+          tb = w;
+        }
+        if (ta > t0) {
+          t0 = ta;
+          axis = 1;
+          sign = s;
+        }
         t1 = Math.min(t1, tb);
         if (t0 > t1) continue;
       }
@@ -238,9 +272,17 @@ class BotNavSystem {
       } else {
         let ta = (-b.hd - oz) / ldz;
         let tb = (b.hd - oz) / ldz;
-        let s = ldz > 0 ? -1 : 1;
-        if (ta > tb) { const w = ta; ta = tb; tb = w; }
-        if (ta > t0) { t0 = ta; axis = 2; sign = s; }
+        const s = ldz > 0 ? -1 : 1;
+        if (ta > tb) {
+          const w = ta;
+          ta = tb;
+          tb = w;
+        }
+        if (ta > t0) {
+          t0 = ta;
+          axis = 2;
+          sign = s;
+        }
         t1 = Math.min(t1, tb);
         if (t0 > t1) continue;
       }
@@ -277,7 +319,10 @@ class BotNavSystem {
           const ddx = this.xs[n] - x;
           const ddz = this.zs[n] - z;
           const d2 = ddx * ddx + ddz * ddz;
-          if (d2 < bestD2) { bestD2 = d2; bestNode = n; }
+          if (d2 < bestD2) {
+            bestD2 = d2;
+            bestNode = n;
+          }
         }
       }
       if (bestNode >= 0) return bestNode;
@@ -324,7 +369,10 @@ class BotNavSystem {
         const hx = this.xs[n] - gx;
         const hz = this.zs[n] - gz;
         const f = this.g[n] + Math.sqrt(hx * hx + hz * hz);
-        if (f < bestF) { bestF = f; bestIdx = k; }
+        if (f < bestF) {
+          bestF = f;
+          bestIdx = k;
+        }
       }
       const current = open[bestIdx];
       open[bestIdx] = open[open.length - 1];

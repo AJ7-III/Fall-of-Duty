@@ -5,26 +5,22 @@ import { Settings } from "./Settings";
 const MATCH_TALK_EVENTS = 10;
 const VOICE_VOLUME = 0.602;
 
-const DEATH_CLIPS = [
-  new URL("../../Voice clips/After death 1.wav", import.meta.url).href,
-  new URL("../../Voice clips/After death 2.wav", import.meta.url).href,
-  new URL("../../Voice clips/After death 3.wav", import.meta.url).href,
-  new URL("../../Voice clips/After death 4.wav", import.meta.url).href,
-  new URL("../../Voice clips/After death 5.wav", import.meta.url).href,
-  new URL("../../Voice clips/After death 6.wav", import.meta.url).href,
-  new URL("../../Voice clips/After death 7.wav", import.meta.url).href,
-  new URL("../../Voice clips/After death 8.wav", import.meta.url).href,
-] as const;
-
-const VICTORY_CLIPS = [
-  new URL("../../Voice clips/After Victory 1.wav", import.meta.url).href,
-  new URL("../../Voice clips/After victory 2.wav", import.meta.url).href,
-  new URL("../../Voice clips/After victory 3.wav", import.meta.url).href,
-  new URL("../../Voice clips/After victory 4.wav", import.meta.url).href,
-  new URL("../../Voice clips/After victory 5.wav", import.meta.url).href,
-  new URL("../../Voice clips/After victory 6.wav", import.meta.url).href,
-  new URL("../../Voice clips/After victory 7.wav", import.meta.url).href,
-] as const;
+// The rival's voice lines, bundled from src/assets/voice by Vite: the ones
+// they play over your corpse, the ones they spit when you drop them, and
+// the opening line as the match goes live
+const clipUrls = (glob: Record<string, string>): string[] =>
+  Object.keys(glob)
+    .sort()
+    .map((k) => glob[k]);
+const KILL_CLIPS = clipUrls(
+  import.meta.glob("../assets/voice/taunt-victory-*.wav", { eager: true, query: "?url", import: "default" })
+);
+const DEATH_CLIPS = clipUrls(
+  import.meta.glob("../assets/voice/taunt-kill-*.wav", { eager: true, query: "?url", import: "default" })
+);
+const START_CLIPS = clipUrls(
+  import.meta.glob("../assets/voice/match-start-*.wav", { eager: true, query: "?url", import: "default" })
+);
 
 export class RivalVoice {
   private indicatorEl = document.getElementById("voice-comms");
@@ -41,6 +37,8 @@ export class RivalVoice {
     if (this.nameEl) this.nameEl.innerText = RIVAL_DISPLAY_NAME;
     this.resetMatch();
 
+    // "kill" is the player scoring: the rival curses. "playerDeath" is the
+    // rival scoring: they gloat.
     MatchEvents.on("kill", () => this.maybePlay(this.deathDeck, this.deathTalkGate));
     MatchEvents.on("playerDeath", (e) => {
       if (!e.self) this.maybePlay(this.victoryDeck, this.victoryTalkGate);
@@ -50,9 +48,15 @@ export class RivalVoice {
   public resetMatch(): void {
     this.stop();
     this.deathDeck = this.shuffled(DEATH_CLIPS);
-    this.victoryDeck = this.shuffled(VICTORY_CLIPS);
+    this.victoryDeck = this.shuffled(KILL_CLIPS);
     this.deathTalkGate = this.shuffledTalkGate(MATCH_TALK_EVENTS);
     this.victoryTalkGate = this.shuffledTalkGate(MATCH_TALK_EVENTS);
+  }
+
+  // The opening line as the match goes live
+  public matchStart(): void {
+    if (this.muted) return;
+    this.playFrom(this.shuffled(START_CLIPS));
   }
 
   public dispose(): void {

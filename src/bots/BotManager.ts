@@ -1,6 +1,6 @@
 import { Vector3 } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
-import { PlayerController } from "../player/PlayerController";
+import type { PlayerController } from "../player/PlayerController";
 import { BotNav } from "./BotNav";
 import { Bot } from "./Bot";
 import type { BotContext } from "./Bot";
@@ -18,10 +18,21 @@ import { MatchEvents } from "../ui/MatchEvents";
 export class BotManager {
   private static readonly RESPAWN_DELAY = 5;
   private static readonly DIFFICULTY_KEY = "fallOfDuty.difficulty";
-  private static readonly URL_LEVELS: Record<string, number> = { recruit: 2, regular: 3, hardened: 5, veteran: 8, terminator: 10 };
+  private static readonly URL_LEVELS: Record<string, number> = {
+    recruit: 2,
+    regular: 3,
+    hardened: 5,
+    veteran: 8,
+    terminator: 10,
+  };
   // Corner pockets + the two wall pass-through containers
   private static readonly SPAWNS: ReadonlyArray<[number, number]> = [
-    [13.5, 13.5], [-13.5, 13.5], [13.5, -13.5], [-13.5, -13.5], [-14.7, 0.6], [14.7, 0.35],
+    [13.5, 13.5],
+    [-13.5, 13.5],
+    [13.5, -13.5],
+    [-13.5, -13.5],
+    [-14.7, 0.6],
+    [14.7, 0.35],
   ];
 
   public bots: Bot[] = [];
@@ -43,7 +54,7 @@ export class BotManager {
     const params = new URLSearchParams(location.search);
     const saved = BotManager.readSavedDifficulty();
     const urlLevel = BotManager.URL_LEVELS[params.get("difficulty") ?? ""];
-    this.difficultyLevel = Math.max(1, Math.min(10, Number.isFinite(saved) ? saved : urlLevel ?? 5));
+    this.difficultyLevel = Math.max(1, Math.min(10, Number.isFinite(saved) ? saved : (urlLevel ?? 5)));
     this.difficulty = difficultyForLevel(this.difficultyLevel);
     const count = Math.max(1, Math.min(6, parseInt(params.get("bots") ?? "1", 10) || 1));
 

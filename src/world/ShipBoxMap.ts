@@ -14,8 +14,8 @@ import {
   RenderTargetTexture,
   ParticleSystem,
 } from "@babylonjs/core";
-import { WorldMaterials } from "./materials/WorldMaterials";
-import { Target } from "./Target";
+import type { WorldMaterials } from "./materials/WorldMaterials";
+import type { Target } from "./Target";
 import { CarWreck } from "./CarWreck";
 import { TruckWreck } from "./TruckWreck";
 import { PlayerController } from "../player/PlayerController";
@@ -150,10 +150,19 @@ export class ShipBoxMap {
         this.box(`${name}_post${k}`, 0.07, 0.55, 0.07, alongX ? t : cx, alongX ? cz : t, metalMat, wallH + 0.15, false);
       }
       for (const wy of [0.32, 0.52]) {
-        this.box(`${name}_wire${wy}`, alongX ? 33 : 0.035, 0.035, alongX ? 0.035 : 33, cx, cz, metalMat, wallH + 0.15 + wy, false);
+        this.box(
+          `${name}_wire${wy}`,
+          alongX ? 33 : 0.035,
+          0.035,
+          alongX ? 0.035 : 33,
+          cx,
+          cz,
+          metalMat,
+          wallH + 0.15 + wy,
+          false
+        );
       }
     }
-
   }
 
   private addCaster(mesh: Mesh): void {
@@ -173,8 +182,7 @@ export class ShipBoxMap {
 
   private mergeStaticParts(): void {
     for (const parts of this.casterParts.values()) {
-      const merged =
-        parts.length > 1 ? Mesh.MergeMeshes(parts, true, true, undefined, false, false) : parts[0];
+      const merged = parts.length > 1 ? Mesh.MergeMeshes(parts, true, true, undefined, false, false) : parts[0];
       if (!merged) continue;
       merged.receiveShadows = true;
       merged.freezeWorldMatrix();
@@ -199,8 +207,11 @@ export class ShipBoxMap {
   // Box helper: builds the mesh, registers its AABB, casts/receives shadows
   private box(
     name: string,
-    w: number, h: number, d: number,
-    x: number, z: number,
+    w: number,
+    h: number,
+    d: number,
+    x: number,
+    z: number,
     mat: StandardMaterial,
     yBase: number = 0,
     collide: boolean = true
@@ -229,7 +240,8 @@ export class ShipBoxMap {
   // square (roll 0) — the overhead shows no derelict/tilted boxes.
   private container(
     name: string,
-    cx: number, cz: number,
+    cx: number,
+    cz: number,
     yaw: number,
     mat: StandardMaterial,
     doorMat: StandardMaterial | null,
@@ -264,9 +276,12 @@ export class ShipBoxMap {
     if (collide) {
       const crossHalf = 1.25 * cosR + 1.3 * sinR;
       PlayerController.registerObstacleOBB(
-        cx, cz,
-        3.05 + 0.05, crossHalf + 0.05,
-        yBase, yBase + 2 * (1.3 * cosR + 1.25 * sinR),
+        cx,
+        cz,
+        3.05 + 0.05,
+        crossHalf + 0.05,
+        yBase,
+        yBase + 2 * (1.3 * cosR + 1.25 * sinR),
         yaw
       );
     }
@@ -278,7 +293,8 @@ export class ShipBoxMap {
   // with a full wall so it becomes a one-mouth half-open pocket.
   private openContainer(
     name: string,
-    cx: number, cz: number,
+    cx: number,
+    cz: number,
     axis: "x" | "z",
     mat: StandardMaterial,
     closedEnd: 1 | -1 | 0 = 0
@@ -347,13 +363,7 @@ export class ShipBoxMap {
   // Abandoned car: full CarWreck build — shaped body and pillars merged with
   // the static map, plus individually shootable window panes
   private carWreck(cx: number, cz: number, yaw: number): void {
-    new CarWreck(
-      this.scene,
-      this.materials,
-      new Vector3(cx, 0, cz),
-      yaw,
-      (mat, mesh) => this.collectStatic(mat, mesh)
-    );
+    new CarWreck(this.scene, this.materials, new Vector3(cx, 0, cz), yaw, (mat, mesh) => this.collectStatic(mat, mesh));
     PlayerController.registerObstacleOBB(cx, cz, 2.2, 0.94, 0, 1.5, yaw);
   }
 
@@ -361,13 +371,7 @@ export class ShipBoxMap {
   // breakable windshield/door glass on the weapons' hitscan, dual rear
   // wheels, roll-up door — merged with the static map like the car.
   private truckWreck(cx: number, cz: number, yaw: number): void {
-    new TruckWreck(
-      this.scene,
-      this.materials,
-      new Vector3(cx, 0, cz),
-      yaw,
-      (mat, mesh) => this.collectStatic(mat, mesh)
-    );
+    new TruckWreck(this.scene, this.materials, new Vector3(cx, 0, cz), yaw, (mat, mesh) => this.collectStatic(mat, mesh));
     PlayerController.registerObstacleOBB(cx, cz, 3.25, 1.2, 0, 2.95, yaw);
   }
 
@@ -571,8 +575,14 @@ export class ShipBoxMap {
     this.box("fork_arm2", 1.4, 0.1, 0.08, -13.5, 21.8, metalMat, 1.8, false);
 
     // -- Water tower (north-east, taller version) --
-    const tx = 10, tz = 30;
-    for (const [lx, lz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) {
+    const tx = 10,
+      tz = 30;
+    for (const [lx, lz] of [
+      [-1.6, -1.6],
+      [1.6, -1.6],
+      [-1.6, 1.6],
+      [1.6, 1.6],
+    ]) {
       this.box(`tower_leg_${lx}_${lz}`, 0.22, 13, 0.22, tx + lx, tz + lz, metalMat, 0, false);
     }
     // diagonal cross-braces on two faces
@@ -589,7 +599,11 @@ export class ShipBoxMap {
     tank.position.set(tx, 14.9, tz);
     tank.material = metalMat;
     this.collectStatic(metalMat, tank);
-    const cone = MeshBuilder.CreateCylinder("tower_cone", { height: 1.8, diameterTop: 0.5, diameterBottom: 5.2, tessellation: 18 }, this.scene);
+    const cone = MeshBuilder.CreateCylinder(
+      "tower_cone",
+      { height: 1.8, diameterTop: 0.5, diameterBottom: 5.2, tessellation: 18 },
+      this.scene
+    );
     cone.position.set(tx, 17.7, tz);
     cone.material = metalMat;
     this.collectStatic(metalMat, cone);
@@ -614,7 +628,7 @@ export class ShipBoxMap {
       [-20, 11, 1, 0],
       [22, -1, -1, 0],
       [7, 23, 0, -1],
-      [-18, -14, 0.7, 0.7],  // extra SW lamp
+      [-18, -14, 0.7, 0.7], // extra SW lamp
     ];
     for (const [px, pz, dx, dz] of poles) {
       const pole = MeshBuilder.CreateCylinder(`lamp_${px}_${pz}`, { height: 8.5, diameter: 0.22, tessellation: 10 }, this.scene);
@@ -622,7 +636,11 @@ export class ShipBoxMap {
       pole.material = metalMat;
       this.collectStatic(metalMat, pole);
       // base collar
-      const collar = MeshBuilder.CreateCylinder(`lamp_collar_${px}_${pz}`, { height: 0.4, diameterTop: 0.32, diameterBottom: 0.56, tessellation: 10 }, this.scene);
+      const collar = MeshBuilder.CreateCylinder(
+        `lamp_collar_${px}_${pz}`,
+        { height: 0.4, diameterTop: 0.32, diameterBottom: 0.56, tessellation: 10 },
+        this.scene
+      );
       collar.position.set(px, 0.2, pz);
       collar.material = metalMat;
       this.collectStatic(metalMat, collar);
@@ -752,10 +770,7 @@ export class ShipBoxMap {
         const dz = z - obs.cz;
         const cos = Math.cos(obs.yaw);
         const sin = Math.sin(obs.yaw);
-        if (
-          Math.abs(cos * dx - sin * dz) < obs.hw + 0.12 &&
-          Math.abs(sin * dx + cos * dz) < obs.hd + 0.12
-        ) {
+        if (Math.abs(cos * dx - sin * dz) < obs.hw + 0.12 && Math.abs(sin * dx + cos * dz) < obs.hd + 0.12) {
           return false;
         }
       }

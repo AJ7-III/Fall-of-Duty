@@ -1,5 +1,5 @@
 import type { Weapon } from "../weapons/WeaponTypes";
-import { Input } from "../engine/Input";
+import type { Input } from "../engine/Input";
 import type { PlayerController } from "../player/PlayerController";
 
 export class Hud {

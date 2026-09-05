@@ -1,5 +1,5 @@
-import { Mesh, MeshBuilder, Quaternion, StandardMaterial, TransformNode, Vector3 } from "@babylonjs/core";
-import type { DynamicTexture, Scene } from "@babylonjs/core";
+import { Mesh, MeshBuilder, Quaternion, TransformNode, Vector3 } from "@babylonjs/core";
+import type { DynamicTexture, Scene, StandardMaterial } from "@babylonjs/core";
 import { frameQuat } from "../anim/boneMath";
 
 // Shared building blocks for the procedural first-person weapons: primitive
