@@ -11,17 +11,12 @@ import {
   Constants,
   TransformNode,
   Vector3,
-  VertexBuffer,
 } from "@babylonjs/core";
-import type {
-  AbstractMesh,
-  AnimationGroup,
-  AssetContainer,
-  Observer,
-  PBRMaterial,
-  Scene,
-} from "@babylonjs/core";
+import type { AnimationGroup, AssetContainer, Material, Observer, PBRMaterial, Scene } from "@babylonjs/core";
 import { whenSoldierModelReady } from "./SoldierAssets";
+import { assetUrl } from "../assets/paths";
+import { captureBoneFrame, dirToLocal, frameQuat, solveTwoBone } from "../anim/boneMath";
+import type { TwoBoneChain } from "../anim/boneMath";
 
 // The one soldier body, shared by every human in the yard — now a real
 // skinned glTF character (Mixamo Vanguard rig, Idle/Walk/Run clips) instead
@@ -44,8 +39,7 @@ import { whenSoldierModelReady } from "./SoldierAssets";
 //    and the muzzle math keep their meaning.
 
 export interface SoldierMats {
-  key: string; // faction cache key for the skin material
-  tint: Color3; // multiplied into the character albedo (OPFOR olive / player tan)
+  key: SoldierTint; // faction: which tint the shared body material wears
   dark: StandardMaterial;
   wood: StandardMaterial;
   face: StandardMaterial; // dummy pair — keeps the eyes-shut swap and the
@@ -150,184 +144,58 @@ function kitMats(scene: Scene): Pick<SoldierMats, "dark" | "wood" | "blob" | "fa
 
 // The OPFOR look — the repainted woodland-camo kit, cooled slightly
 export function botMaterials(scene: Scene): SoldierMats {
-  return { ...kitMats(scene), key: "opfor", tint: new Color3(0.9, 0.95, 0.84) };
+  return { ...kitMats(scene), key: "opfor" };
 }
 
-// The player's corpse: the same kit warmed toward tan desert fatigues so
-// the death-cam reads "that's me", not another hostile
+// The player's corpse: the same kit warmed toward tan, matching the
+// first-person arms so the death-cam reads "that's me", not another hostile
 export function playerMaterials(scene: Scene): SoldierMats {
-  return { ...kitMats(scene), key: "player", tint: new Color3(1.12, 1.04, 0.85) };
+  return { ...kitMats(scene), key: "player" };
 }
 
-// ------------------------------------------------ player corpse arm repaint
+// ------------------------------------------------------- body materials
 
-// The death-cam body must read as the same person as the first-person rig:
-// bare tattooed forearms and woven shooting gloves (AssetLoader's viewmodel
-// arms), not the Vanguard armour sleeves. The regions are found from the
-// mesh's own skin weights — every triangle owned by the ForeArm / Hand bone
-// chains — and repainted directly over the fatigues albedo, so no UV-layout
-// knowledge is hardcoded.
-function playerBodyAlbedo(scene: Scene, meshes: AbstractMesh[]): Texture {
-  const existing = scene.getTextureByName("soldierFatiguesPlayerTex") as Texture | null;
-  if (existing) return existing;
-  const S = 1024; // matches the source albedo
-  const tex = new DynamicTexture(
-    "soldierFatiguesPlayerTex", { width: S, height: S }, scene,
-    true, Texture.TRILINEAR_SAMPLINGMODE, Constants.TEXTUREFORMAT_RGBA,
-    false // glTF UVs — no Y flip, same as the shared fatigues texture
-  );
-  const ctx = tex.getContext() as CanvasRenderingContext2D;
+export type SoldierTint = "opfor" | "player";
 
-  // Texel-space path of every triangle whose corners all ride the given bone
-  // chain (the weight threshold keeps elbow/wrist blend triangles out, which
-  // leaves a natural rolled-sleeve / glove-cuff boundary).
-  const regionPath = (boneKey: string): Path2D | null => {
-    const path = new Path2D();
-    let any = false;
-    for (const mesh of meshes) {
-      const skel = mesh.skeleton;
-      if (!skel) continue;
-      const picks = new Set<number>();
-      skel.bones.forEach((b, i) => {
-        if (b.name.includes(boneKey)) picks.add(i);
-      });
-      if (!picks.size) continue;
-      const uv = mesh.getVerticesData(VertexBuffer.UVKind);
-      const mi = mesh.getVerticesData(VertexBuffer.MatricesIndicesKind);
-      const mw = mesh.getVerticesData(VertexBuffer.MatricesWeightsKind);
-      const idx = mesh.getIndices();
-      if (!uv || !mi || !mw || !idx) continue;
-      const n = (uv.length / 2) | 0;
-      const w = new Float32Array(n);
-      for (let v = 0; v < n; v++) {
-        for (let k = 0; k < 4; k++) {
-          if (picks.has(mi[v * 4 + k])) w[v] += mw[v * 4 + k];
-        }
-      }
-      for (let t = 0; t + 2 < idx.length; t += 3) {
-        const a = idx[t], b = idx[t + 1], c = idx[t + 2];
-        if (w[a] < 0.2 || w[b] < 0.2 || w[c] < 0.2) continue;
-        path.moveTo(uv[a * 2] * S, uv[a * 2 + 1] * S);
-        path.lineTo(uv[b * 2] * S, uv[b * 2 + 1] * S);
-        path.lineTo(uv[c * 2] * S, uv[c * 2 + 1] * S);
-        path.closePath();
-        any = true;
-      }
-    }
-    return any ? path : null;
-  };
+const TINTS: Record<SoldierTint, Color3> = {
+  opfor: new Color3(0.9, 0.95, 0.84), // woodland kit, cooled slightly
+  player: new Color3(1.12, 1.04, 0.85), // the same kit warmed toward tan
+};
 
-  const tile = (size: number, paint: (c: CanvasRenderingContext2D, s: number) => void): HTMLCanvasElement => {
-    const cv = document.createElement("canvas");
-    cv.width = cv.height = size;
-    const c = cv.getContext("2d") as CanvasRenderingContext2D;
-    paint(c, size);
-    return cv;
-  };
-
-  // The viewmodel skin scaled down: dark weathered base, mottled tone, and
-  // the blackwork motifs (stripe pair, chevrons, diamond band, dotwork) from
-  // AssetLoader's half-sleeve. Base sits a touch cooler than the viewmodel
-  // because the player tint (1.12, 1.04, 0.85) warms it back up.
-  const skinTile = tile(160, (c, s) => {
-    const grad = c.createLinearGradient(0, 0, 0, s);
-    grad.addColorStop(0, "#57382a");
-    grad.addColorStop(0.5, "#4c3024");
-    grad.addColorStop(1, "#40271c");
-    c.fillStyle = grad;
-    c.fillRect(0, 0, s, s);
-    for (let i = 0; i < 90; i++) {
-      c.fillStyle = ["rgba(90,57,42,0.3)", "rgba(75,46,33,0.3)", "rgba(104,73,54,0.3)", "rgba(65,38,25,0.3)"][i % 4];
-      c.beginPath();
-      c.ellipse(Math.random() * s, Math.random() * s, 2 + Math.random() * 8, 1.5 + Math.random() * 5, Math.random() * Math.PI, 0, Math.PI * 2);
-      c.fill();
-    }
-    const ink = (a: number): string => `rgba(17,23,26,${a})`;
-    c.fillStyle = ink(0.72);
-    c.fillRect(0, 26, s, 4);
-    c.fillRect(0, 56, s, 4);
-    c.fillStyle = ink(0.62);
-    for (let x = 0; x < s; x += 20) {
-      c.beginPath();
-      c.moveTo(x, 54);
-      c.lineTo(x + 10, 34);
-      c.lineTo(x + 20, 54);
-      c.closePath();
-      c.fill();
-    }
-    c.fillStyle = ink(0.66); // solid band with negative-space diamonds
-    c.fillRect(0, 86, s, 22);
-    c.fillStyle = "#4c3024";
-    for (let x = 10; x < s; x += 28) {
-      c.save();
-      c.translate(x, 97);
-      c.rotate(Math.PI / 4);
-      c.fillRect(-4.5, -4.5, 9, 9);
-      c.restore();
-    }
-    c.fillStyle = ink(0.6); // dotwork arc + wrist pinstripes
-    for (let k = 0; k < 7; k++) {
-      c.beginPath();
-      c.arc(20 + k * 19, 128 + Math.sin(k * 0.9) * 6, 2.2, 0, Math.PI * 2);
-      c.fill();
-    }
-    c.fillRect(0, 146, s, 2);
-    c.fillRect(0, 151, s, 2);
-  });
-
-  // The viewmodel's shooting-glove nylon: dark olive cross-hatch weave
-  const gloveTile = tile(64, (c, s) => {
-    c.fillStyle = "#26261f";
-    c.fillRect(0, 0, s, s);
-    c.lineWidth = 1;
-    for (let p = 0; p < s; p += 4) {
-      c.strokeStyle = "rgba(58,58,46,0.55)";
-      c.beginPath(); c.moveTo(p, 0); c.lineTo(p, s); c.stroke();
-      c.strokeStyle = "rgba(16,16,12,0.6)";
-      c.beginPath(); c.moveTo(0, p + 2); c.lineTo(s, p + 2); c.stroke();
-    }
-    for (let i = 0; i < 18; i++) {
-      c.fillStyle = i % 2 ? "rgba(51,51,42,0.3)" : "rgba(28,28,22,0.3)";
-      c.beginPath();
-      c.ellipse(Math.random() * s, Math.random() * s, 2 + Math.random() * 5, 1 + Math.random() * 3, Math.random() * Math.PI, 0, Math.PI * 2);
-      c.fill();
-    }
-  });
-
-  const fillRegion = (path: Path2D, pattern: HTMLCanvasElement): void => {
-    const pat = ctx.createPattern(pattern, "repeat");
-    if (!pat) return;
-    ctx.save();
-    ctx.clip(path);
-    ctx.fillStyle = pat;
-    ctx.fillRect(0, 0, S, S);
-    ctx.restore();
-    // dilate past the island edge so bilinear sampling shows no camo halo
-    ctx.strokeStyle = pat;
-    ctx.lineWidth = 3;
-    ctx.lineJoin = "round";
-    ctx.stroke(path);
-  };
-
-  // stand-in tone until the base albedo lands (the corpse stays hidden until
-  // the first death, long after this resolves)
-  ctx.fillStyle = "#8a7d5f";
-  ctx.fillRect(0, 0, S, S);
-  tex.update();
-
-  const img = new Image();
-  img.onload = (): void => {
-    ctx.drawImage(img, 0, 0, S, S);
-    const skin = regionPath("ForeArm");
-    if (skin) fillRegion(skin, skinTile);
-    const glove = regionPath("Hand"); // also catches the finger chains
-    if (glove) fillRegion(glove, gloveTile); // after skin: the cuff wins the wrist
-    tex.update();
-  };
-  img.onerror = (): void => console.error("player corpse repaint: fatigues albedo failed to load");
-  img.src = "/models/soldier_fatigues.jpg";
-
-  return tex;
+// The scene is a StandardMaterial world (hemispheric + directional light,
+// linear fog, frozen defines) — the glb's PBR is swapped for Standard
+// materials sharing its normal map, over the repainted woodland-camo albedo
+// (the glb's sci-fi plate beige rebaked into war clothing), tinted per
+// faction. Shared by every soldier body AND the first-person arms, so the
+// hands on the rifle are painted exactly like the body on the death cam.
+export function soldierMaterialFor(scene: Scene, tint: SoldierTint, isVisor: boolean, src: Material | null): StandardMaterial {
+  const matName = `soldierSkin_${tint}_${isVisor ? "visor" : "body"}`;
+  const cached = scene.getMaterialByName(matName) as StandardMaterial | null;
+  if (cached) return cached;
+  const std = new StandardMaterial(matName, scene);
+  let albedo = scene.getTextureByName("soldierFatiguesTex") as Texture | null;
+  if (!albedo) {
+    albedo = new Texture(assetUrl("models/soldier_fatigues.jpg"), scene, false, false); // glTF UVs — no Y flip
+    albedo.name = "soldierFatiguesTex";
+    albedo.anisotropicFilteringLevel = 8;
+  }
+  std.diffuseTexture = albedo;
+  std.diffuseColor = TINTS[tint];
+  const pbr = src as PBRMaterial | null;
+  if (pbr?.bumpTexture) {
+    std.bumpTexture = pbr.bumpTexture; // keep the glb's normal map detail
+    std.invertNormalMapX = pbr.invertNormalMapX;
+    std.invertNormalMapY = pbr.invertNormalMapY;
+  }
+  if (isVisor) {
+    std.specularColor = new Color3(0.45, 0.48, 0.52);
+    std.specularPower = 64;
+  } else {
+    std.specularColor = new Color3(0.08, 0.08, 0.09);
+    std.specularPower = 24;
+  }
+  std.freeze();
+  return std;
 }
 
 // The Terminator skin: one shared chrome material for difficulty 9+ —
@@ -564,67 +432,24 @@ interface DeathJoint {
   angles: () => { right: number; fwd: number };
 }
 
-// Two-bone analytic IK arm gripping the rifle.
+// Two-bone analytic IK arm gripping the rifle
 interface ArmIK {
-  upper: TransformNode;
-  fore: TransformNode;
-  aLen: number;
-  bLen: number;
-  dLUpper: Vector3; // bone axis in the node's local frame (toward child)
-  bLUpper: Vector3; // bend reference in the node's local frame
-  dLFore: Vector3;
-  bLFore: Vector3;
+  chain: TwoBoneChain;
   target: TransformNode;
   pole: TransformNode;
 }
 
-// Dedicated scratch per routine — these helpers nest (solveArms calls
-// setSegment calls frameQuat), so sharing one temp pool would alias.
+// Scratch for the pose layer (the IK/frame helpers keep their own)
 const TMP_M = new Matrix();
-const FQ_Y = new Vector3();
-const FQ_Z = new Vector3();
-const FQ_T = new Vector3();
 const CO_M = new Matrix();
 const CO_AXIS_W = new Vector3();
 const CO_AXIS_P = new Vector3();
 const CO_Q = new Quaternion();
-const IK_T = new Vector3();
-const IK_DIR = new Vector3();
-const IK_PV = new Vector3();
-const IK_TMP = new Vector3();
-const IK_ELBOW = new Vector3();
-const SS_M = new Matrix();
-const SS_D = new Vector3();
-const SS_B = new Vector3();
-const SS_Q1 = new Quaternion();
-const SS_Q2 = new Quaternion();
 const UF_POS = new Vector3();
 const UF_D = new Vector3();
 const UF_R = new Vector3();
 const UF_Q = new Quaternion();
 const UF_INVROOT = new Quaternion();
-
-// joint-local representation of a world direction
-function dirToLocal(world: Vector3, node: TransformNode, out: Vector3): Vector3 {
-  node.getWorldMatrix().invertToRef(TMP_M);
-  Vector3.TransformNormalToRef(world, TMP_M, out);
-  return out.normalize();
-}
-
-// Rotation quaternion from an axis pair: y = primary (bone direction),
-// z-ish = secondary (bend/facing reference). Both frames built identically,
-// so mapping one onto the other is always a proper rotation even when the
-// surrounding matrix chain is mirrored.
-function frameQuat(y: Vector3, zRef: Vector3, out: Quaternion): Quaternion {
-  const yn = FQ_Y.copyFrom(y).normalize();
-  const z = FQ_Z.copyFrom(zRef);
-  z.subtractInPlace(FQ_T.copyFrom(yn).scaleInPlace(Vector3.Dot(z, yn)));
-  if (z.lengthSquared() < 1e-8) z.set(yn.y, yn.z, yn.x); // degenerate ref: any perpendicular
-  z.normalize();
-  const x = Vector3.Cross(yn, z);
-  Quaternion.RotationQuaternionFromAxisToRef(x, yn, z, out);
-  return out;
-}
 
 export class SoldierBodyController {
   private scene: Scene;
@@ -737,54 +562,13 @@ export class SoldierBodyController {
     this.readyCbs.length = 0;
   }
 
-  // The scene is a StandardMaterial world (hemispheric + directional light,
-  // linear fog, frozen defines) — swap the glb's PBR for Standard materials
-  // sharing its albedo textures, tinted per faction.
   private convertMaterials(inst: { rootNodes: unknown[] }): void {
-    const scene = this.scene;
-    const tintKey = this.look.mats.key;
-    const meshes = (inst.rootNodes[0] as TransformNode).getChildMeshes(false);
-    for (const mesh of meshes) {
+    const tint = this.look.mats.key;
+    for (const mesh of (inst.rootNodes[0] as TransformNode).getChildMeshes(false)) {
       mesh.isPickable = false; // hitboxes do the picking
       mesh.alwaysSelectAsActiveMesh = true; // skinned bounds don't track the animation
-      const src = mesh.material as PBRMaterial | null;
-      if (!src) continue;
       const isVisor = mesh.name.toLowerCase().includes("visor");
-      const matName = `soldierSkin_${tintKey}_${isVisor ? "visor" : "body"}`;
-      let std = scene.getMaterialByName(matName) as StandardMaterial | null;
-      if (!std) {
-        std = new StandardMaterial(matName, scene);
-        // The repainted albedo: the glb's sci-fi plate beige rebaked into
-        // woodland-camo war clothing (scripted palette remap, see repo
-        // public/models). glTF UVs — no Y flip. The player corpse instead
-        // gets the variant with the viewmodel's bare tattooed forearms and
-        // gloves baked over the arm UVs, so the death cam reads as "me".
-        let camo: Texture;
-        if (tintKey === "player" && !isVisor) {
-          camo = playerBodyAlbedo(scene, meshes);
-        } else {
-          let shared = scene.getTextureByName("soldierFatiguesTex") as Texture | null;
-          if (!shared) {
-            shared = new Texture("/models/soldier_fatigues.jpg", scene, false, false);
-            shared.name = "soldierFatiguesTex";
-          }
-          camo = shared;
-        }
-        std.diffuseTexture = camo;
-        std.diffuseColor = this.look.mats.tint;
-        std.bumpTexture = src.bumpTexture; // keep the glb's normal map detail
-        std.invertNormalMapX = src.invertNormalMapX;
-        std.invertNormalMapY = src.invertNormalMapY;
-        if (isVisor) {
-          std.specularColor = new Color3(0.45, 0.48, 0.52);
-          std.specularPower = 64;
-        } else {
-          std.specularColor = new Color3(0.08, 0.08, 0.09);
-          std.specularPower = 24;
-        }
-        std.freeze();
-      }
-      mesh.material = std;
+      mesh.material = soldierMaterialFor(this.scene, tint, isVisor, mesh.material);
     }
   }
 
@@ -861,21 +645,17 @@ export class SoldierBodyController {
       pole.parent = root;
       // elbows tuck down and back, slightly outboard
       pole.position.set(side === "Left" ? -0.45 : 0.45, 0.78, -0.38);
-
-      const captureSeg = (node: TransformNode, child: TransformNode): { dL: Vector3; bL: Vector3 } => {
-        const dL = child.position.clone().normalize(); // child's local pos IS the bone axis in node space
-        const bL = dirToLocal(back, node, new Vector3()).clone();
-        return { dL, bL };
-      };
-      const u = captureSeg(upper, fore);
-      const f = captureSeg(fore, hand);
       this.arms.push({
-        upper, fore,
-        aLen: Vector3.Distance(upper.getAbsolutePosition(), fore.getAbsolutePosition()),
-        bLen: Vector3.Distance(fore.getAbsolutePosition(), hand.getAbsolutePosition()),
-        dLUpper: u.dL, bLUpper: u.bL,
-        dLFore: f.dL, bLFore: f.bL,
-        target, pole,
+        chain: {
+          upper,
+          fore,
+          aLen: Vector3.Distance(upper.getAbsolutePosition(), fore.getAbsolutePosition()),
+          bLen: Vector3.Distance(fore.getAbsolutePosition(), hand.getAbsolutePosition()),
+          upperFrame: captureBoneFrame(upper, fore, back),
+          foreFrame: captureBoneFrame(fore, hand, back),
+        },
+        target,
+        pole,
       });
     };
     buildSide("Right", this.r.gripR);
@@ -1051,51 +831,8 @@ export class SoldierBodyController {
     for (const arm of this.arms) {
       arm.target.computeWorldMatrix(true);
       arm.pole.computeWorldMatrix(true);
-      arm.upper.computeWorldMatrix(true);
-
-      const S = arm.upper.getAbsolutePosition();
-      IK_DIR.copyFrom(arm.target.getAbsolutePosition()).subtractInPlace(S);
-      let d = IK_DIR.length();
-      if (d < 1e-4) continue;
-      IK_DIR.scaleInPlace(1 / d);
-      d = Math.min(arm.aLen + arm.bLen - 0.005, Math.max(Math.abs(arm.aLen - arm.bLen) + 0.005, d));
-
-      // bend plane from the pole
-      IK_PV.copyFrom(arm.pole.getAbsolutePosition()).subtractInPlace(S);
-      IK_PV.subtractInPlace(IK_TMP.copyFrom(IK_DIR).scaleInPlace(Vector3.Dot(IK_PV, IK_DIR)));
-      if (IK_PV.lengthSquared() < 1e-6) IK_PV.set(0, -1, 0.2);
-      IK_PV.normalize();
-
-      const cosS = Math.min(1, Math.max(-1, (arm.aLen * arm.aLen + d * d - arm.bLen * arm.bLen) / (2 * arm.aLen * d)));
-      const sinS = Math.sqrt(Math.max(0, 1 - cosS * cosS));
-      IK_ELBOW.copyFrom(IK_DIR).scaleInPlace(cosS)
-        .addInPlace(IK_TMP.copyFrom(IK_PV).scaleInPlace(sinS)).normalize();
-
-      this.setSegment(arm.upper, arm.dLUpper, arm.bLUpper, IK_ELBOW, IK_PV);
-      arm.upper.computeWorldMatrix(true);
-      arm.fore.computeWorldMatrix(true);
-
-      // forearm: from the solved elbow toward the (reach-clamped) target
-      IK_T.copyFrom(IK_DIR).scaleInPlace(d).addInPlace(S);
-      IK_T.subtractInPlace(arm.fore.getAbsolutePosition()).normalize();
-      this.setSegment(arm.fore, arm.dLFore, arm.bLFore, IK_T, IK_PV);
-      arm.fore.computeWorldMatrix(true);
+      solveTwoBone(arm.chain, arm.target.getAbsolutePosition(), arm.pole.getAbsolutePosition());
     }
-  }
-
-  // rotate a bone node so its captured local bone-axis/bend-ref frame lands
-  // on the desired world directions
-  private setSegment(node: TransformNode, dL: Vector3, bL: Vector3, dW: Vector3, bW: Vector3): void {
-    const parent = node.parent as TransformNode;
-    parent.getWorldMatrix().invertToRef(SS_M);
-    Vector3.TransformNormalToRef(dW, SS_M, SS_D);
-    SS_D.normalize();
-    Vector3.TransformNormalToRef(bW, SS_M, SS_B);
-    frameQuat(SS_D, SS_B, SS_Q1); // destination frame in parent space
-    frameQuat(dL, bL, SS_Q2); // source frame in node space
-    SS_Q2.invertInPlace();
-    if (!node.rotationQuaternion) node.rotationQuaternion = new Quaternion();
-    SS_Q1.multiplyToRef(SS_Q2, node.rotationQuaternion);
   }
 
   private updateFollower(f: Follower): void {

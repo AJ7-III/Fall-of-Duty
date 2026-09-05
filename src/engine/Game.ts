@@ -1,7 +1,8 @@
-import { Engine, Scene, Color4, DefaultRenderingPipeline, ImageProcessingConfiguration } from "@babylonjs/core";
+import { Engine, Scene, Color4, Tools } from "@babylonjs/core";
 import { Time } from "./Time";
 import { Input } from "./Input";
-import { AssetLoader } from "./AssetLoader";
+import { WorldMaterials } from "../world/materials/WorldMaterials";
+import { PostProcessing } from "../rendering/PostProcessing";
 import { CameraRig } from "../player/CameraRig";
 import { PlayerController } from "../player/PlayerController";
 import { DeathCam } from "../player/DeathCam";
@@ -32,7 +33,8 @@ export class Game {
 
   private time: Time;
   private input: Input;
-  private loader: AssetLoader;
+  private materials: WorldMaterials;
+  private postfx: PostProcessing;
 
   private cameraRig: CameraRig;
   private player: PlayerController;
@@ -56,6 +58,7 @@ export class Game {
   private everLocked = false;
   private wasDead = false; // edge detector for the death-cam handoff
   private elapsed = 0; // monotonic game time for UI pulse phases
+  private lastFpsUpdate = 0; // Time.fpsUpdates seen by the adaptive quality step-down
   private hudRootEl = document.getElementById("hud-root");
   private lastHideCrosshair = false;
   private disposed = false;
@@ -71,7 +74,10 @@ export class Game {
     //   backbuffer behind a post-process pipeline only burns bandwidth
     // - preserveDrawingBuffer/stencil false: nothing reads pixels back and
     //   nothing uses stencil — both cost real GPU time when enabled
-    this.engine = new Engine(this.canvas, false, { preserveDrawingBuffer: false, stencil: false });
+    // - adaptToDeviceRatio: render at native device pixels (a Retina display
+    //   otherwise gets a half-resolution image stretched 2x — the single
+    //   biggest sharpness loss); PostProcessing caps the ratio for speed
+    this.engine = new Engine(this.canvas, false, { preserveDrawingBuffer: false, stencil: false, adaptToDeviceRatio: true });
     this.scene = new Scene(this.engine);
 
     // Gritty industrial fog/clear color
@@ -89,14 +95,14 @@ export class Game {
     // 2. Initialize Subsystems
     this.time = new Time();
     this.input = new Input(this.canvas);
-    this.loader = new AssetLoader();
+    this.materials = new WorldMaterials(this.scene);
     
     this.cameraRig = new CameraRig(this.scene);
     this.player = new PlayerController(this.input, this.cameraRig);
-    this.weaponManager = new WeaponManager(this.loader);
-    this.map = new ShipBoxMap(this.scene, this.loader);
+    this.weaponManager = new WeaponManager();
+    this.map = new ShipBoxMap(this.scene, this.materials);
     
-    this.viewModelRig = new ViewModelRig(this.scene, this.cameraRig, this.loader);
+    this.viewModelRig = new ViewModelRig(this.scene, this.cameraRig);
     this.scopeOverlay = new ScopeOverlay();
     this.effects = new Effects(this.scene);
     // After the map: the bots grow their nav graph from its collision boxes.
@@ -138,23 +144,10 @@ export class Game {
     // state to get stranded in. Re-locking from the Resume button unpauses.
     document.addEventListener("pointerlockchange", this.onPointerLockChange);
 
-    // Post-processing: FXAA + filmic tone mapping + subtle bloom/grain/vignette.
-    // This is what lifts the flat-shaded look into something photographic.
-    const pipeline = new DefaultRenderingPipeline("postfx", true, this.scene, [this.cameraRig.camera]);
-    pipeline.fxaaEnabled = true;
-    pipeline.bloomEnabled = true;
-    pipeline.bloomThreshold = 0.85;
-    pipeline.bloomWeight = 0.18;
-    pipeline.bloomKernel = 48;
-    pipeline.imageProcessing.toneMappingEnabled = true;
-    pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
-    pipeline.imageProcessing.exposure = 1.15;
-    pipeline.imageProcessing.contrast = 1.12;
-    pipeline.imageProcessing.vignetteEnabled = true;
-    pipeline.imageProcessing.vignetteWeight = 1.6;
-    pipeline.grainEnabled = true;
-    pipeline.grain.intensity = 7;
-    pipeline.grain.animated = true;
+    // Post-processing: anti-aliasing, filmic tone mapping, sharpening,
+    // bloom, vignette. This is what lifts the flat-shaded look into
+    // something photographic.
+    this.postfx = new PostProcessing(this.engine, this.scene, this.cameraRig.camera);
 
     // Every material in the scene is now final: textures may still repaint
     // (target boards) and light uniforms still update (muzzle flash), but no
@@ -199,6 +192,7 @@ export class Game {
     this.killstreaks.onMatchEnd();
     this.rivalVoice.dispose();
     this.matchUI.dispose();
+    this.postfx.dispose();
     MatchEvents.clear();
     this.input.dispose();
     this.scene.dispose();
@@ -208,120 +202,159 @@ export class Game {
   private startLoop(): void {
     this.engine.runRenderLoop(() => {
       if (this.disposed) return;
-      // Step 1: Update frame time delta. Runs in every state so resuming
-      // from a pause never hands the simulation a giant dt.
       this.time.update();
-
-      if (this.matchState === "playing") {
-        const dt = this.time.deltaTime;
-
-        // P releases the pointer lock; the pointerlockchange handler turns
-        // that into the pause (same path Escape takes)
-        if (this.input.isKeyPressed("KeyP") && this.input.getIsPointerLocked()) {
-          document.exitPointerLock();
-        }
-
-        this.elapsed += dt;
-        const activeWeapon = this.weaponManager.getActiveWeapon();
-        const adsState = activeWeapon.adsAnimator.getInterpolatedState();
-
-        // Step 2: Update Player (look, movement, camera rig)
-        this.player.update(dt, adsState.sensitivityMultiplier, activeWeapon.adsAnimator.getProgress());
-
-        // Step 3: Update Weapon Systems (firing, bolt action state, reloading,
-        // ADS animation). While killstreak hardware is in hand, LMB belongs
-        // to that device — the trigger is disconnected.
-        this.weaponManager.update(
-          dt,
-          this.input,
-          this.player,
-          this.cameraRig,
-          this.scene,
-          this.effects,
-          !this.killstreaks.handheldOut
-        );
-
-        // Step 3.5: Bots perceive, decide, move and fight — after the player's
-        // shots have landed (deaths register before they act) and with this
-        // frame's gunshot noise for their hearing. A respawned player gets a
-        // fresh Fall of Duty loadout.
-        this.botManager.update(dt, this.player, this.weaponManager.firedThisFrame);
-        if (this.player.consumeRespawn()) {
-          this.weaponManager.refillAll();
-          this.deathCam.end();
-          this.wasDead = false;
-        }
-
-        // Step 3.6: Killstreaks — the C-key laptop, scheduled bombs, the
-        // Apache. Runs after the bots so this frame's kills count instantly.
-        this.killstreaks.update(dt);
-
-        // Step 3.7: Death: the moment the player drops (bot fire above, or
-        // their own airstrike), the camera leaves their eyes and the corpse
-        // actor takes the stage until respawn hands control back.
-        if (this.player.isDead && !this.wasDead) {
-          this.wasDead = true;
-          this.deathCam.begin(this.player, this.cameraRig.camera, this.effects);
-        }
-        if (this.player.isDead) {
-          this.deathCam.update(dt, this.cameraRig.camera);
-        }
-
-        // Step 4: Update ViewModel & Scope overlay rendering.
-        // Re-fetch the weapon: the X-key swap may have just changed it.
-        // Dead hands and killstreak hardware hands carry no rifle.
-        const hideViewmodel = this.player.isDead || this.killstreaks.handheldOut;
-        this.viewModelRig.setHidden(hideViewmodel);
-        if (hideViewmodel) {
-          this.scopeOverlay.update(0, 0, 0);
-        } else {
-          const shownWeapon = this.weaponManager.getActiveWeapon();
-          const shownAds = shownWeapon.adsAnimator.getInterpolatedState();
-          this.viewModelRig.update(
-            dt,
-            shownWeapon,
-            this.input,
-            this.player.isSprinting,
-            this.weaponManager.getLowerAmount()
-          );
-          this.scopeOverlay.update(shownAds.scopeOpacity, shownAds.vignetteOpacity, shownWeapon.adsAnimator.getProgress());
-        }
-        if (hideViewmodel !== this.lastHideCrosshair) {
-          this.lastHideCrosshair = hideViewmodel;
-          this.hudRootEl?.classList.toggle("hide-crosshair", hideViewmodel);
-        }
-
-        // Step 5: Update Map targets
-        this.map.update(dt);
-
-        // Step 5.5: Scoreboard + the first-to-10 win condition
-        this.matchUI.setScore(this.botManager.playerKills, this.player.deaths);
-        if (this.botManager.playerKills >= Game.KILL_LIMIT) {
-          this.endMatch("victory");
-        } else if (this.player.deaths >= Game.KILL_LIMIT) {
-          this.endMatch("defeat");
-        }
-      }
-
-      // Step 6: Render Scene (paused/ended render the frozen frame under the menus)
-      this.scene.render();
-
-      // Step 7: Update HUD interface + minimap radar (UAV reveal included)
-      if (this.matchState === "playing") {
-        this.hud.update(this.weaponManager.getActiveWeapon(), this.input, this.player);
-        this.minimap.update(
-          this.player,
-          this.botManager.bots,
-          this.killstreaks.uavActive,
-          this.elapsed,
-          this.killstreaks.getApacheRadarContact()
-        );
-      }
-
-      // Step 8: Clear single-frame key transitions (every state — stale
-      // presses from menu typing must not fire on resume)
-      this.input.postUpdate();
+      this.frame();
     });
+  }
+
+  // Deterministic stepping for tooling: advance the simulation N frames of
+  // exactly `dt` seconds each, rendering every one. Dev-only (see main.ts);
+  // lets the death choreography, reload animations and bot behaviour be
+  // inspected frame by frame from the console without a live mouse.
+  public stepFrames(frames: number, dt: number): void {
+    for (let i = 0; i < frames; i++) {
+      this.time.deltaTime = dt;
+      this.engine.beginFrame();
+      this.frame();
+      this.engine.endFrame();
+    }
+  }
+
+  // Dev tooling: render one frame and post the result to the dev server's
+  // screenshot endpoint (see vite.config.ts), which saves it as a PNG.
+  public captureFrame(name: string, dt: number = 1 / 60): Promise<string> {
+    return new Promise((resolve, reject) => {
+      Tools.CreateScreenshot(this.engine, this.cameraRig.camera, { precision: 1 }, (dataUrl) => {
+        fetch("/__dev/screenshot", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name, dataUrl }),
+        })
+          .then((r) => r.json())
+          .then((j: { file: string }) => resolve(j.file), reject);
+      });
+      this.stepFrames(1, dt);
+    });
+  }
+
+  // One simulation + render frame. Time.deltaTime has already been set.
+  private frame(): void {
+    if (this.matchState === "playing") {
+      const dt = this.time.deltaTime;
+
+      // P releases the pointer lock; the pointerlockchange handler turns
+      // that into the pause (same path Escape takes)
+      if (this.input.isKeyPressed("KeyP") && this.input.getIsPointerLocked()) {
+        document.exitPointerLock();
+      }
+
+      this.elapsed += dt;
+      const activeWeapon = this.weaponManager.getActiveWeapon();
+      const adsState = activeWeapon.adsAnimator.getInterpolatedState();
+
+      // Step 2: Update Player (look, movement, camera rig)
+      this.player.update(dt, adsState.sensitivityMultiplier, activeWeapon.adsAnimator.getProgress());
+
+      // Step 3: Update Weapon Systems (firing, bolt action state, reloading,
+      // ADS animation). While killstreak hardware is in hand, LMB belongs
+      // to that device — the trigger is disconnected.
+      this.weaponManager.update(
+        dt,
+        this.input,
+        this.player,
+        this.cameraRig,
+        this.scene,
+        this.effects,
+        !this.killstreaks.handheldOut
+      );
+
+      // Step 3.5: Bots perceive, decide, move and fight — after the player's
+      // shots have landed (deaths register before they act) and with this
+      // frame's gunshot noise for their hearing. A respawned player gets a
+      // fresh Fall of Duty loadout.
+      this.botManager.update(dt, this.player, this.weaponManager.firedThisFrame);
+      if (this.player.consumeRespawn()) {
+        this.weaponManager.refillAll();
+        this.deathCam.end();
+        this.wasDead = false;
+      }
+
+      // Step 3.6: Killstreaks — the C-key laptop, scheduled bombs, the
+      // Apache. Runs after the bots so this frame's kills count instantly.
+      this.killstreaks.update(dt);
+
+      // Step 3.7: Death: the moment the player drops (bot fire above, or
+      // their own airstrike), the camera leaves their eyes and the corpse
+      // actor takes the stage until respawn hands control back.
+      if (this.player.isDead && !this.wasDead) {
+        this.wasDead = true;
+        this.deathCam.begin(this.player, this.cameraRig.camera, this.effects);
+      }
+      if (this.player.isDead) {
+        this.deathCam.update(dt, this.cameraRig.camera);
+      }
+
+      // Step 4: Update ViewModel & Scope overlay rendering.
+      // Re-fetch the weapon: the X-key swap may have just changed it.
+      // Dead hands and killstreak hardware hands carry no rifle.
+      const hideViewmodel = this.player.isDead || this.killstreaks.handheldOut;
+      this.viewModelRig.setHidden(hideViewmodel);
+      if (hideViewmodel) {
+        this.scopeOverlay.update(0, 0, 0);
+      } else {
+        const shownWeapon = this.weaponManager.getActiveWeapon();
+        const shownAds = shownWeapon.adsAnimator.getInterpolatedState();
+        this.viewModelRig.update(
+          dt,
+          shownWeapon,
+          this.input,
+          this.player.isSprinting,
+          this.weaponManager.getLowerAmount()
+        );
+        this.scopeOverlay.update(shownAds.scopeOpacity, shownAds.vignetteOpacity, shownWeapon.adsAnimator.getProgress());
+      }
+      if (hideViewmodel !== this.lastHideCrosshair) {
+        this.lastHideCrosshair = hideViewmodel;
+        this.hudRootEl?.classList.toggle("hide-crosshair", hideViewmodel);
+      }
+
+      // Step 5: Update Map targets
+      this.map.update(dt);
+
+      // Step 5.5: Scoreboard + the first-to-10 win condition
+      this.matchUI.setScore(this.botManager.playerKills, this.player.deaths);
+      if (this.botManager.playerKills >= Game.KILL_LIMIT) {
+        this.endMatch("victory");
+      } else if (this.player.deaths >= Game.KILL_LIMIT) {
+        this.endMatch("defeat");
+      }
+    }
+
+    // Step 6: Render Scene (paused/ended render the frozen frame under the menus)
+    this.scene.render();
+
+    // Step 6.5: Once a second while playing, let the image pipeline judge
+    // whether the chosen quality tier is holding a playable frame rate
+    if (this.matchState === "playing" && this.time.fpsUpdates !== this.lastFpsUpdate) {
+      this.lastFpsUpdate = this.time.fpsUpdates;
+      this.postfx.reportFps(this.time.fps);
+    }
+
+    // Step 7: Update HUD interface + minimap radar (UAV reveal included)
+    if (this.matchState === "playing") {
+      this.hud.update(this.weaponManager.getActiveWeapon(), this.input, this.player);
+      this.minimap.update(
+        this.player,
+        this.botManager.bots,
+        this.killstreaks.uavActive,
+        this.elapsed,
+        this.killstreaks.getApacheRadarContact()
+      );
+    }
+
+    // Step 8: Clear single-frame key transitions (every state — stale
+    // presses from menu typing must not fire on resume)
+    this.input.postUpdate();
   }
 
   // ---------------------------------------------------------- match flow

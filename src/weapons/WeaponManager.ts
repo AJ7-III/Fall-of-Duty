@@ -6,7 +6,6 @@ import { BoltActionSniper } from "./BoltActionSniper";
 import { Mp44 } from "./Mp44";
 import { Pistol } from "./Pistol";
 import type { Weapon } from "./WeaponTypes";
-import { AssetLoader } from "../engine/AssetLoader";
 import { Effects } from "../rendering/Effects";
 
 type SwitchPhase = "none" | "lower" | "raise";
@@ -28,10 +27,10 @@ export class WeaponManager {
   // so no weapon has to report anything.
   public firedThisFrame: boolean = false;
 
-  constructor(loader: AssetLoader) {
+  constructor() {
     // MP44 first: the automatic rifle is the base loadout; X cycles to the
     // bolt rifle, then the sidearm
-    this.weapons = [new Mp44(loader), new BoltActionSniper(loader), new Pistol(loader)];
+    this.weapons = [new Mp44(), new BoltActionSniper(), new Pistol()];
   }
 
   public update(

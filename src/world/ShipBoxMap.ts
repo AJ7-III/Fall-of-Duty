@@ -14,7 +14,7 @@ import {
   RenderTargetTexture,
   ParticleSystem,
 } from "@babylonjs/core";
-import { AssetLoader } from "../engine/AssetLoader";
+import { WorldMaterials } from "./materials/WorldMaterials";
 import { Target } from "./Target";
 import { CarWreck } from "./CarWreck";
 import { TruckWreck } from "./TruckWreck";
@@ -37,7 +37,7 @@ import { PlayerController } from "../player/PlayerController";
 //   - Past the walls (visual only): warehouses, stacks, water tower, lamps
 export class ShipBoxMap {
   private scene: Scene;
-  private loader: AssetLoader;
+  private materials: WorldMaterials;
   private shadowGen: ShadowGenerator | null = null;
   private shadowMap: RenderTargetTexture | null = null;
 
@@ -51,9 +51,9 @@ export class ShipBoxMap {
 
   public targets: Target[] = [];
 
-  constructor(scene: Scene, loader: AssetLoader) {
+  constructor(scene: Scene, materials: WorldMaterials) {
     this.scene = scene;
-    this.loader = loader;
+    this.materials = materials;
 
     PlayerController.clearObstacles();
 
@@ -95,7 +95,7 @@ export class ShipBoxMap {
     this.scene.fogColor = new Color3(0.5, 0.53, 0.56);
 
     const sky = MeshBuilder.CreateSphere("skyDome", { diameter: 600, segments: 12, sideOrientation: 1 }, this.scene);
-    sky.material = this.loader.createSkyMaterial(this.scene);
+    sky.material = this.materials.createSkyMaterial();
     sky.isPickable = false;
     sky.freezeWorldMatrix();
   }
@@ -103,7 +103,7 @@ export class ShipBoxMap {
   private createEnvironment(): void {
     // Rain-soaked lawn: the yard plus the out-of-bounds surround
     const floor = MeshBuilder.CreateGround("floor", { width: 100, height: 100 }, this.scene);
-    floor.material = this.loader.createGrassMaterial(this.scene, 12, 12);
+    floor.material = this.materials.createGrassMaterial(12, 12);
     floor.receiveShadows = true;
     floor.freezeWorldMatrix();
 
@@ -114,7 +114,7 @@ export class ShipBoxMap {
     const walkway = (name: string, w: number, d: number, cx: number, cz: number, u: number, v: number) => {
       const slab = MeshBuilder.CreateBox(name, { width: w, height: 0.04, depth: d }, this.scene);
       slab.position.set(cx, 0.02, cz);
-      const mat = this.loader.createStoneWalkwayMaterial(this.scene, u, v);
+      const mat = this.materials.createStoneWalkwayMaterial(u, v);
       slab.material = mat;
       this.collectStatic(mat, slab);
     };
@@ -127,9 +127,9 @@ export class ShipBoxMap {
     walkway("walkRingW", 1.8, 28.2, -15.0, 0, 1, 21);
 
     // Perimeter: concrete walls plastered in graffiti, concrete cap, barbed wire
-    const wallMat = this.loader.createGraffitiWallMaterial(this.scene, 6, 1);
-    const capMat = this.loader.createConcreteMaterial(this.scene, 12, 1);
-    const metalMat = this.loader.createMetalMaterial(this.scene);
+    const wallMat = this.materials.createGraffitiWallMaterial(6, 1);
+    const capMat = this.materials.createConcreteMaterial(12, 1);
+    const metalMat = this.materials.createMetalMaterial();
 
     const wallH = 2.55;
     const sides: Array<[string, number, number, number, number]> = [
@@ -285,7 +285,7 @@ export class ShipBoxMap {
   ): void {
     const len = 6.1;
     const alongX = axis === "x";
-    const woodMat = this.loader.createWoodCrateMaterial(this.scene);
+    const woodMat = this.materials.createWoodCrateMaterial();
 
     if (alongX) {
       this.box(`${name}_w1`, len, 2.6, 0.1, cx, cz - 1.2, mat);
@@ -320,7 +320,7 @@ export class ShipBoxMap {
 
   // Stack of shipping pallets (rough boards, ~0.65m high)
   private pallet(cx: number, cz: number, yaw: number): void {
-    const woodMat = this.loader.createWoodCrateMaterial(this.scene);
+    const woodMat = this.materials.createWoodCrateMaterial();
     for (let i = 0; i < 4; i++) {
       const p = MeshBuilder.CreateBox(`pallet_${cx}_${cz}_${i}`, { width: 1.6, height: 0.13, depth: 1.3 }, this.scene);
       p.position.set(cx, 0.065 + i * 0.165, cz);
@@ -333,7 +333,7 @@ export class ShipBoxMap {
   }
 
   private crate(cx: number, cz: number, size: number, yaw: number): void {
-    const woodMat = this.loader.createWoodCrateMaterial(this.scene);
+    const woodMat = this.materials.createWoodCrateMaterial();
     const c = MeshBuilder.CreateBox(`crate_${cx}_${cz}`, { width: size, height: size, depth: size }, this.scene);
     c.position.set(cx, size / 2, cz);
     c.rotation.y = yaw;
@@ -349,7 +349,7 @@ export class ShipBoxMap {
   private carWreck(cx: number, cz: number, yaw: number): void {
     new CarWreck(
       this.scene,
-      this.loader,
+      this.materials,
       new Vector3(cx, 0, cz),
       yaw,
       (mat, mesh) => this.collectStatic(mat, mesh)
@@ -363,7 +363,7 @@ export class ShipBoxMap {
   private truckWreck(cx: number, cz: number, yaw: number): void {
     new TruckWreck(
       this.scene,
-      this.loader,
+      this.materials,
       new Vector3(cx, 0, cz),
       yaw,
       (mat, mesh) => this.collectStatic(mat, mesh)
@@ -374,17 +374,17 @@ export class ShipBoxMap {
   // ---------------- layout (coordinates traced from the overhead) ----------------
 
   private createCenterBlocks(): void {
-    const green = this.loader.createContainerMaterial(this.scene, "green", "#4a5d44", "#3c4d38");
-    const rust = this.loader.createContainerMaterial(this.scene, "rust", "#7d4a32", "#6a3e2a");
-    const blue = this.loader.createContainerMaterial(this.scene, "blue", "#3a566e", "#2f4759");
-    const red = this.loader.createContainerMaterial(this.scene, "red", "#71382e", "#5e2e26");
-    const gray = this.loader.createContainerMaterial(this.scene, "gray", "#878a82", "#74776f");
-    const greenDoor = this.loader.createContainerDoorMaterial(this.scene, "green", "#4a5d44", "#41523c");
-    const blueDoor = this.loader.createContainerDoorMaterial(this.scene, "blue", "#3a566e", "#334b60");
-    const redDoor = this.loader.createContainerDoorMaterial(this.scene, "red", "#71382e", "#633129");
-    const rustDoor = this.loader.createContainerDoorMaterial(this.scene, "rust", "#7d4a32", "#6e412c");
-    const grayDoor = this.loader.createContainerDoorMaterial(this.scene, "gray", "#878a82", "#7a7d74");
-    const metalMat = this.loader.createMetalMaterial(this.scene);
+    const green = this.materials.createContainerMaterial("green", "#4a5d44", "#3c4d38");
+    const rust = this.materials.createContainerMaterial("rust", "#7d4a32", "#6a3e2a");
+    const blue = this.materials.createContainerMaterial("blue", "#3a566e", "#2f4759");
+    const red = this.materials.createContainerMaterial("red", "#71382e", "#5e2e26");
+    const gray = this.materials.createContainerMaterial("gray", "#878a82", "#74776f");
+    const greenDoor = this.materials.createContainerDoorMaterial("green", "#4a5d44", "#41523c");
+    const blueDoor = this.materials.createContainerDoorMaterial("blue", "#3a566e", "#334b60");
+    const redDoor = this.materials.createContainerDoorMaterial("red", "#71382e", "#633129");
+    const rustDoor = this.materials.createContainerDoorMaterial("rust", "#7d4a32", "#6e412c");
+    const grayDoor = this.materials.createContainerDoorMaterial("gray", "#878a82", "#7a7d74");
+    const metalMat = this.materials.createMetalMaterial();
 
     // NW: green stack. North column is a closed double-high pair. The south
     // container is the ONE HALF-OPEN center box (per the diagram's yellow mark
@@ -421,11 +421,11 @@ export class ShipBoxMap {
   }
 
   private createEdgeStructures(): void {
-    const rust = this.loader.createContainerMaterial(this.scene, "rust", "#7d4a32", "#6a3e2a");
-    const blue = this.loader.createContainerMaterial(this.scene, "blue", "#3a566e", "#2f4759");
-    const gray = this.loader.createContainerMaterial(this.scene, "gray", "#878a82", "#74776f");
-    const grayDoor = this.loader.createContainerDoorMaterial(this.scene, "gray", "#878a82", "#7a7d74");
-    const blueDoor = this.loader.createContainerDoorMaterial(this.scene, "blue", "#3a566e", "#334b60");
+    const rust = this.materials.createContainerMaterial("rust", "#7d4a32", "#6a3e2a");
+    const blue = this.materials.createContainerMaterial("blue", "#3a566e", "#2f4759");
+    const gray = this.materials.createContainerMaterial("gray", "#878a82", "#74776f");
+    const grayDoor = this.materials.createContainerDoorMaterial("gray", "#878a82", "#7a7d74");
+    const blueDoor = this.materials.createContainerDoorMaterial("blue", "#3a566e", "#334b60");
 
     // North edge: a HALF-OPEN inner container (one mouth open — walk-in pocket,
     // sealed at the far end) backed by a closed outer one against the wall.
@@ -452,7 +452,7 @@ export class ShipBoxMap {
   }
 
   private createCornerClutter(): void {
-    const metalMat = this.loader.createMetalMaterial(this.scene);
+    const metalMat = this.materials.createMetalMaterial();
 
     // NW: pallet + crate at skewed angles
     this.pallet(-10.1, 9.6, 0.5);
@@ -475,14 +475,14 @@ export class ShipBoxMap {
 
   // Everything past the walls is set dressing: no collision, fog does the rest
   private createOutOfBounds(): void {
-    const concreteMat = this.loader.createConcreteMaterial(this.scene, 8, 2);
-    const concreteTall = this.loader.createConcreteMaterial(this.scene, 6, 3);
-    const metalMat = this.loader.createMetalMaterial(this.scene);
-    const windowMat = this.loader.createWindowBandMaterial(this.scene);
-    const green = this.loader.createContainerMaterial(this.scene, "green", "#4a5d44", "#3c4d38");
-    const rust = this.loader.createContainerMaterial(this.scene, "rust", "#7d4a32", "#6a3e2a");
-    const blue = this.loader.createContainerMaterial(this.scene, "blue", "#3a566e", "#2f4759");
-    const gray = this.loader.createContainerMaterial(this.scene, "gray", "#878a82", "#74776f");
+    const concreteMat = this.materials.createConcreteMaterial(8, 2);
+    const concreteTall = this.materials.createConcreteMaterial(6, 3);
+    const metalMat = this.materials.createMetalMaterial();
+    const windowMat = this.materials.createWindowBandMaterial();
+    const green = this.materials.createContainerMaterial("green", "#4a5d44", "#3c4d38");
+    const rust = this.materials.createContainerMaterial("rust", "#7d4a32", "#6a3e2a");
+    const blue = this.materials.createContainerMaterial("blue", "#3a566e", "#2f4759");
+    const gray = this.materials.createContainerMaterial("gray", "#878a82", "#74776f");
 
     let darkMat = this.scene.getMaterialByName("wreckDarkMat") as StandardMaterial | null;
     if (!darkMat) {
@@ -659,7 +659,7 @@ export class ShipBoxMap {
 
     // Mural 1 (3:4 portrait) on the north warehouse south face (z ≈ 21, roof y=10)
     const b1YBase = 10.0 - (billH + billFrame); // top of backing flush with roof
-    const b1Mat = this.loader.createBillboardMuralMaterial(this.scene, 1);
+    const b1Mat = this.materials.createBillboardMuralMaterial(1);
     this.box("billN_back", 4.3, billH + billFrame, 0.14, -5, 20.93, darkMat, b1YBase, false);
     const b1 = MeshBuilder.CreatePlane(
       "billN_img",
@@ -673,7 +673,7 @@ export class ShipBoxMap {
 
     // Mural 2 (452×768) on the east warehouse west face (x ≈ 22, roof y=9)
     const b2YBase = 9.0 - (billH + billFrame); // top of backing flush with roof
-    const b2Mat = this.loader.createBillboardMuralMaterial(this.scene, 2);
+    const b2Mat = this.materials.createBillboardMuralMaterial(2);
     this.box("billE_back", 0.14, billH + billFrame, 3.3, 21.93, 2, darkMat, b2YBase, false);
     const b2 = MeshBuilder.CreatePlane(
       "billE_img",
@@ -694,8 +694,8 @@ export class ShipBoxMap {
   // footprint, the open-container floors and the OOB buildings.
   private createLongGrass(): void {
     const mat = new StandardMaterial("grassTuftMat", this.scene);
-    mat.diffuseTexture = this.loader.createGrassBladeTexture(this.scene);
-    const bladeMask = this.loader.createGrassBladeMaskTexture(this.scene);
+    mat.diffuseTexture = this.materials.createGrassBladeTexture();
+    const bladeMask = this.materials.createGrassBladeMaskTexture();
     bladeMask.getAlphaFromRGB = true;
     mat.opacityTexture = bladeMask;
     mat.transparencyMode = 1; // alpha-test cutout — no sorting, no halos
@@ -808,7 +808,7 @@ export class ShipBoxMap {
   // meters/second and lifetimes read as seconds at any frame rate.
   private createRain(): void {
     const rain = new ParticleSystem("rain", 3000, this.scene);
-    rain.particleTexture = this.loader.createRainStreakTexture(this.scene);
+    rain.particleTexture = this.materials.createRainStreakTexture();
     rain.emitter = this.rainAnchor;
     rain.minEmitBox = new Vector3(-11, 0, -11);
     rain.maxEmitBox = new Vector3(11, 2.5, 11);

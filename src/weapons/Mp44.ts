@@ -5,7 +5,7 @@ import { ADSAnimator } from "./ADSAnimator";
 import { fireHitscanRay } from "./WeaponTypes";
 import type { Weapon, WeaponConfig, WeaponState } from "./WeaponTypes";
 import { Effects } from "../rendering/Effects";
-import { AssetLoader } from "../engine/AssetLoader";
+import { weaponAdsFrames, weaponConfig } from "./WeaponData";
 
 type ReloadEvent = { time: number; kind: "magOut" | "magIn" | "charge" };
 
@@ -38,11 +38,11 @@ export class Mp44 implements Weapon {
   private reloadEvents: ReloadEvent[] = [];
   private reloadStartedEmpty: boolean = false;
 
-  constructor(loader: AssetLoader) {
-    this.config = loader.loadMp44Config();
+  constructor() {
+    this.config = weaponConfig("mp44");
     this.clipAmmo = this.config.magSize;
     this.reserveAmmo = this.config.maxReserveAmmo;
-    this.adsAnimator = new ADSAnimator(loader.loadMp44AdsAnimation());
+    this.adsAnimator = new ADSAnimator(weaponAdsFrames("mp44"));
   }
 
   public getBoltBack(): number {

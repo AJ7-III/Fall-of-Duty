@@ -5,7 +5,7 @@ import { ADSAnimator } from "./ADSAnimator";
 import { fireHitscanRay } from "./WeaponTypes";
 import type { Weapon, WeaponConfig, WeaponState } from "./WeaponTypes";
 import { Effects } from "../rendering/Effects";
-import { AssetLoader } from "../engine/AssetLoader";
+import { weaponAdsFrames, weaponConfig } from "./WeaponData";
 
 type ReloadEvent = { time: number; kind: "magOut" | "magIn" | "slideRelease" };
 
@@ -43,12 +43,11 @@ export class Pistol implements Weapon {
   private fireCooldown: number = 0;
   private reloadEvents: ReloadEvent[] = [];
 
-  constructor(loader: AssetLoader) {
-    this.config = loader.loadPistolConfig();
+  constructor() {
+    this.config = weaponConfig("usp45");
     this.clipAmmo = this.config.magSize;
     this.reserveAmmo = this.config.maxReserveAmmo;
-
-    this.adsAnimator = new ADSAnimator(loader.loadPistolAdsAnimation());
+    this.adsAnimator = new ADSAnimator(weaponAdsFrames("usp45"));
   }
 
   // 0..1 — how far back the slide sits this frame

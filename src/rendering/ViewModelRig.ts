@@ -1,40 +1,39 @@
-import { Scene, Mesh, Vector3, Ray } from "@babylonjs/core";
+import { Mesh, Ray, TransformNode, Vector3 } from "@babylonjs/core";
+import type { Scene } from "@babylonjs/core";
 import { CameraRig } from "../player/CameraRig";
 import { BoltActionSniper } from "../weapons/BoltActionSniper";
 import { Mp44 } from "../weapons/Mp44";
 import { Pistol } from "../weapons/Pistol";
 import type { Weapon, WeaponId } from "../weapons/WeaponTypes";
 import { Input } from "../engine/Input";
-import { AssetLoader } from "../engine/AssetLoader";
+import { buildSniperViewModel } from "../viewmodels/SniperViewModel";
+import { buildPistolViewModel } from "../viewmodels/PistolViewModel";
+import { buildMp44ViewModel } from "../viewmodels/Mp44ViewModel";
+import { ArmsRig } from "../viewmodels/ArmsRig";
+import type { WeaponViewModel } from "../viewmodels/kit";
 
+// The first-person presentation layer: places the active weapon under the
+// camera (ADS keyframes + mouse sway + recoil + sprint carry + wall block +
+// swap dip), drives each weapon's mechanical parts through its state
+// machine, and moves the hand anchors the skinned arms chase — so a reload
+// animation is "where do the hands go", and the arms follow.
 export class ViewModelRig {
   private scene: Scene;
   private cameraRig: CameraRig;
-
-  // Viewmodels live parented to the camera; only one is enabled
-  private sniperMesh: Mesh;
-  private pistolMesh: Mesh;
-  private mp44Mesh: Mesh;
-  private weaponMesh: Mesh; // the active one
+  private models: Record<WeaponId, WeaponViewModel>;
+  private shown: WeaponViewModel;
   private shownId: WeaponId = "m40a3";
+  public readonly arms: ArmsRig;
+  // Everything first-person hangs off this camera-parented pivot. It sits at
+  // identity in play; dev tooling turns it to inspect the hands from the side.
+  public readonly pivot: TransformNode;
 
-  // Sniper animatable parts
-  private boltGroup: Mesh | null = null;
-  private rightArm: Mesh | null = null;
+  // Bolt-rifle pivots (rest offsets captured at build)
   private boltBasePos = new Vector3();
-
-  // Pistol animatable parts
-  private slideGroup: Mesh | null = null;
-  private hammerGroup: Mesh | null = null;
-  private magGroup: Mesh | null = null;
-  private supportArm: Mesh | null = null;
+  // Pistol pivots
   private slideBasePos = new Vector3();
   private magBasePos = new Vector3();
-
-  // MP44 animatable parts
-  private mp44BoltGroup: Mesh | null = null;
-  private mp44MagGroup: Mesh | null = null;
-  private mp44SupportArm: Mesh | null = null;
+  // MP44 pivots
   private mp44BoltBasePos = new Vector3();
   private mp44MagBasePos = new Vector3();
 
@@ -45,43 +44,41 @@ export class ViewModelRig {
   // mag exit direction: straight out of the raked grip (rake = +0.3 rad)
   private static readonly MAG_DIR = new Vector3(0, -0.955, -0.296);
   private static readonly MAG_TRAVEL = 0.45; // distance to fully off-hand
-  // support-hand anchors during the mag swap
+  // support-hand travel during the mag swap (offsets from its wrap grip)
   private static readonly HAND_GRAB = new Vector3(-0.005, -0.045, -0.015); // at the grip heel
   private static readonly HAND_POUCH = new Vector3(-0.05, -0.42, -0.2); // off-screen mag pouch
 
   private static readonly MP44_BOLT_TRAVEL = 0.045;
   private static readonly MP44_MAG_DIR = new Vector3(0.025, -0.93, -0.32);
   private static readonly MP44_MAG_TRAVEL = 0.5;
-  // Group offsets re-anchored for the under-forend rest grip (hand rest pose
-  // moved by +0.026/+0.063/+0.028 when the support hand was rebuilt)
   private static readonly MP44_HAND_GRAB = new Vector3(-0.052, -0.135, -0.06);
   private static readonly MP44_HAND_POUCH = new Vector3(-0.121, -0.493, -0.248);
   private static readonly MP44_CHARGE_HANDLE = new Vector3(-0.09, -0.008, -0.008);
-
-  // Death cam / killstreak laptop: the first-person weapon leaves the frame
-  private hidden = false;
-
-  // Sway values (mouse look lag)
-  private swayX: number = 0;
-  private swayY: number = 0;
-  private swayRotX: number = 0;
-  private swayRotY: number = 0;
 
   // Bolt poses (rotation around the bolt axis + pull-back travel)
   private static readonly BOLT_REST_ROT = -0.9; // handle down-right
   private static readonly BOLT_OPEN_ROT = 0.15; // handle lifted
   private static readonly BOLT_PULL_Z = -0.085; // travel when cycling
 
-  // Right arm offsets relative to its rest pose
-  private static readonly ARM_TO_BOLT = new Vector3(0.025, 0.085, 0.07); // reach up to the handle
+  // Trigger-hand travel while working the bolt: the anchor's alternate pose
+  // puts the hand on the handle; these are the extra offsets from there
   private static readonly ARM_POUCH = new Vector3(0.06, -0.34, -0.16); // down to the chest pouch (off screen)
   private static readonly ARM_PORT = new Vector3(0.015, 0.075, 0.0); // hovering over the open port
 
+  // Death cam / killstreak laptop: the first-person weapon leaves the frame
+  private hidden = false;
+
+  // Sway values (mouse look lag)
+  private swayX = 0;
+  private swayY = 0;
+  private swayRotX = 0;
+  private swayRotY = 0;
+
   // 0..1 — how far the weapon is tilted inward so the hand work is on screen
-  private cycleLift: number = 0;
+  private cycleLift = 0;
 
   // 0..1 — how blocked the muzzle is by world geometry straight ahead
-  private blockPull: number = 0;
+  private blockPull = 0;
   private static readonly BLOCK_RAY_RANGE = 1.15; // start reacting inside this distance
   private static readonly BLOCK_RAMP = 0.6; // fully blocked this far inside the range
   private static readonly FORWARD = Vector3.Forward();
@@ -90,67 +87,44 @@ export class ViewModelRig {
   private blockRay = new Ray(new Vector3(), new Vector3(0, 0, 1), ViewModelRig.BLOCK_RAY_RANGE);
 
   // Sprint carry: 0..1 pose blend + stride phase for the pumping motion
-  private sprintBlend: number = 0;
-  private sprintCycle: number = 0;
+  private sprintBlend = 0;
+  private sprintCycle = 0;
 
-  constructor(scene: Scene, cameraRig: CameraRig, loader: AssetLoader) {
+  constructor(scene: Scene, cameraRig: CameraRig) {
     this.scene = scene;
     this.cameraRig = cameraRig;
 
-    // Create procedural viewmodels up front; holstered weapons start disabled
-    this.sniperMesh = loader.createSniperMesh(scene);
-    this.sniperMesh.parent = cameraRig.camera;
-
-    this.pistolMesh = loader.createPistolMesh(scene);
-    this.pistolMesh.parent = cameraRig.camera;
-    this.pistolMesh.setEnabled(false);
-
-    this.mp44Mesh = loader.createMp44Mesh(scene);
-    this.mp44Mesh.parent = cameraRig.camera;
-    this.mp44Mesh.setEnabled(false);
-
-    this.weaponMesh = this.sniperMesh;
-
-    // Find the animatable sub-rigs on each weapon
-    for (const child of this.sniperMesh.getChildMeshes()) {
-      if (child.name === "boltGroup") {
-        this.boltGroup = child as Mesh;
-        this.boltBasePos.copyFrom(this.boltGroup.position);
-      } else if (child.name === "rightArmGroup") {
-        this.rightArm = child as Mesh;
-      }
+    this.pivot = new TransformNode("viewmodelPivot", scene);
+    this.pivot.parent = cameraRig.camera;
+    this.models = {
+      m40a3: buildSniperViewModel(scene),
+      usp45: buildPistolViewModel(scene),
+      mp44: buildMp44ViewModel(scene),
+    };
+    for (const vm of Object.values(this.models)) {
+      vm.root.parent = this.pivot;
+      vm.root.setEnabled(false);
     }
+    this.shown = this.models.m40a3;
+    this.shown.root.setEnabled(true);
 
-    for (const child of this.pistolMesh.getChildMeshes()) {
-      if (child.name === "slideGroup") {
-        this.slideGroup = child as Mesh;
-        this.slideBasePos.copyFrom(this.slideGroup.position);
-      } else if (child.name === "hammerGroup") {
-        this.hammerGroup = child as Mesh;
-      } else if (child.name === "magGroup") {
-        this.magGroup = child as Mesh;
-        this.magBasePos.copyFrom(this.magGroup.position);
-      } else if (child.name === "supportArmGroup") {
-        this.supportArm = child as Mesh;
-      }
-    }
+    this.boltBasePos.copyFrom(this.models.m40a3.pivots.boltGroup.position);
+    this.slideBasePos.copyFrom(this.models.usp45.pivots.slideGroup.position);
+    this.magBasePos.copyFrom(this.models.usp45.pivots.magGroup.position);
+    this.mp44BoltBasePos.copyFrom(this.models.mp44.pivots.boltGroup.position);
+    this.mp44MagBasePos.copyFrom(this.models.mp44.pivots.magGroup.position);
 
-    for (const child of this.mp44Mesh.getChildMeshes()) {
-      if (child.name === "mp44BoltGroup") {
-        this.mp44BoltGroup = child as Mesh;
-        this.mp44BoltBasePos.copyFrom(this.mp44BoltGroup.position);
-      } else if (child.name === "mp44MagGroup") {
-        this.mp44MagGroup = child as Mesh;
-        this.mp44MagBasePos.copyFrom(this.mp44MagGroup.position);
-      } else if (child.name === "mp44SupportArmGroup") {
-        this.mp44SupportArm = child as Mesh;
-      }
-    }
+    this.arms = new ArmsRig(scene, this.pivot);
+    this.arms.setAnchors(this.shown.hands.left, this.shown.hands.right);
   }
 
   private static smoothstep(t: number): number {
     const c = Math.max(0, Math.min(1, t));
     return c * c * (3 - 2 * c);
+  }
+
+  private get weaponMesh(): Mesh {
+    return this.shown.root;
   }
 
   // Death cam and the killstreak laptop both take the weapon out of frame.
@@ -160,52 +134,36 @@ export class ViewModelRig {
     if (this.hidden === hidden) return;
     this.hidden = hidden;
     this.weaponMesh.setEnabled(!hidden);
+    this.arms.setHidden(hidden);
   }
 
-  public update(
-    deltaTime: number,
-    activeWeapon: Weapon,
-    input: Input,
-    isSprinting: boolean,
-    lowerAmount: number = 0
-  ): void {
-    // 0. Weapon swap: enable the mesh that matches the active weapon
+  public update(deltaTime: number, activeWeapon: Weapon, input: Input, isSprinting: boolean, lowerAmount: number = 0): void {
+    // 0. Weapon swap: enable the model that matches the active weapon
     if (activeWeapon.id !== this.shownId) {
       this.shownId = activeWeapon.id;
-      this.weaponMesh.setEnabled(false);
-      if (activeWeapon.id === "m40a3") {
-        this.weaponMesh = this.sniperMesh;
-      } else if (activeWeapon.id === "usp45") {
-        this.weaponMesh = this.pistolMesh;
-      } else {
-        this.weaponMesh = this.mp44Mesh;
-      }
-      this.weaponMesh.setEnabled(!this.hidden);
+      this.shown.root.setEnabled(false);
+      this.shown = this.models[activeWeapon.id];
+      this.shown.root.setEnabled(!this.hidden);
+      this.arms.setAnchors(this.shown.hands.left, this.shown.hands.right);
     }
+    const weaponMesh = this.weaponMesh;
 
     const adsState = activeWeapon.adsAnimator.getInterpolatedState();
     const isPointerLocked = input.getIsPointerLocked();
 
-    // 1. Calculate Weapon Sway based on mouse movement
+    // 1. Weapon sway from mouse movement (reduced while aiming)
     let targetSwayX = 0;
     let targetSwayY = 0;
     let targetSwayRotX = 0;
     let targetSwayRotY = 0;
-
     if (isPointerLocked) {
       const mouseDelta = input.getMouseDelta();
-
-      // Sway is reduced when ADS
       const swayStrength = activeWeapon.isAiming ? 0.02 : 1.0;
-
       targetSwayX = -mouseDelta.x * 0.00007 * swayStrength;
       targetSwayY = mouseDelta.y * 0.00007 * swayStrength;
-
       targetSwayRotX = mouseDelta.y * 0.0022 * swayStrength;
       targetSwayRotY = -mouseDelta.x * 0.0022 * swayStrength;
     }
-
-    // Smoothly interpolate sway values using robust exponential decay
     const swaySpeed = activeWeapon.isAiming ? 16 : 22;
     const swayFactor = 1 - Math.exp(-swaySpeed * deltaTime);
     this.swayX += (targetSwayX - this.swayX) * swayFactor;
@@ -213,37 +171,29 @@ export class ViewModelRig {
     this.swayRotX += (targetSwayRotX - this.swayRotX) * swayFactor;
     this.swayRotY += (targetSwayRotY - this.swayRotY) * swayFactor;
 
-    // 2. Set Weapon Position
-    // Position = ADS interpolated position + Sway + Recoil Kickback Z
+    // 2. Position = ADS keyframe + sway + recoil kickback
     const pos = adsState.position;
-    this.weaponMesh.position.set(
-      pos[0] + this.swayX,
-      pos[1] + this.swayY,
-      pos[2] - activeWeapon.visualKickZ // Recoil pushes weapon back
-    );
+    weaponMesh.position.set(pos[0] + this.swayX, pos[1] + this.swayY, pos[2] - activeWeapon.visualKickZ);
 
-    // 3. Set Weapon Rotation
-    // Rotation = ADS interpolated rotation + Sway + Recoil Kickback Pitch
-    // Shorter weapons pivot harder around the wrist; the MP44 sits between
-    // the pistol snap and the sniper's slower shoulder recoil.
+    // 3. Rotation = ADS keyframe + sway + recoil pitch. Shorter weapons pivot
+    // harder around the wrist; the MP44 sits between the pistol snap and the
+    // sniper's slower shoulder recoil.
     const rot = adsState.rotation;
     const rotKickFactor = activeWeapon.id === "usp45" ? 1.5 : activeWeapon.id === "mp44" ? 0.78 : 0.4;
     const recoilRotKick = activeWeapon.visualKickZ * rotKickFactor;
+    weaponMesh.rotation.x = (rot[0] * Math.PI) / 180 + this.swayRotX - recoilRotKick;
+    weaponMesh.rotation.y = (rot[1] * Math.PI) / 180 + this.swayRotY;
+    weaponMesh.rotation.z = (rot[2] * Math.PI) / 180;
 
-    this.weaponMesh.rotation.x = (rot[0] * Math.PI) / 180 + this.swayRotX - recoilRotKick;
-    this.weaponMesh.rotation.y = (rot[1] * Math.PI) / 180 + this.swayRotY;
-    this.weaponMesh.rotation.z = (rot[2] * Math.PI) / 180;
+    // Hide the weapon once the scope overlay dominates (sniper only — the
+    // pistol's irons never raise a scope overlay)
+    const scoped = adsState.scopeOpacity >= 0.6;
+    weaponMesh.setEnabled(!scoped);
+    this.arms.setHidden(this.hidden || scoped);
 
-    // Hide the weapon model once the scope overlay dominates (sniper only —
-    // the pistol's irons never raise a scope overlay)
-    if (adsState.scopeOpacity >= 0.6) {
-      this.weaponMesh.setEnabled(false);
-    } else {
-      this.weaponMesh.setEnabled(true);
-    }
-
+    // 4. Mechanical animation per weapon; returns how far to roll the
+    // working side toward the camera
     let liftTarget = 0;
-
     if (activeWeapon.id === "m40a3") {
       liftTarget = this.updateSniperAnimation(deltaTime, activeWeapon as BoltActionSniper);
     } else if (activeWeapon.id === "mp44") {
@@ -253,81 +203,73 @@ export class ViewModelRig {
     }
 
     // 5. Cycle lift: roll the weapon's working side toward the camera while
-    // the hands are busy on it (Fall of Duty weapon handling read)
+    // the hands are busy on it
     this.cycleLift += (liftTarget - this.cycleLift) * (1 - Math.exp(-10 * deltaTime));
     const lift = this.cycleLift;
     if (activeWeapon.id === "m40a3") {
-      this.weaponMesh.position.x -= 0.05 * lift;
-      this.weaponMesh.position.y += 0.02 * lift;
-      this.weaponMesh.position.z -= 0.05 * lift;
-      this.weaponMesh.rotation.y += 0.1 * lift; // bring the receiver toward center
-      this.weaponMesh.rotation.z += 0.28 * lift; // roll the bolt handle up into view
-      this.weaponMesh.rotation.x -= 0.03 * lift; // muzzle tips up slightly
+      weaponMesh.position.x -= 0.05 * lift;
+      weaponMesh.position.y += 0.02 * lift;
+      weaponMesh.position.z -= 0.05 * lift;
+      weaponMesh.rotation.y += 0.1 * lift; // bring the receiver toward center
+      weaponMesh.rotation.z += 0.28 * lift; // roll the bolt handle up into view
+      weaponMesh.rotation.x -= 0.03 * lift; // muzzle tips up slightly
     } else if (activeWeapon.id === "mp44") {
-      // MP44 mag swap/charging handle: roll the left-side controls and long mag into view
-      this.weaponMesh.position.x -= 0.04 * lift;
-      this.weaponMesh.position.y += 0.018 * lift;
-      this.weaponMesh.position.z -= 0.045 * lift;
-      this.weaponMesh.rotation.y += 0.16 * lift;
-      this.weaponMesh.rotation.z += 0.18 * lift;
-      this.weaponMesh.rotation.x -= 0.045 * lift;
+      weaponMesh.position.x -= 0.04 * lift;
+      weaponMesh.position.y += 0.018 * lift;
+      weaponMesh.position.z -= 0.045 * lift;
+      weaponMesh.rotation.y += 0.16 * lift;
+      weaponMesh.rotation.z += 0.18 * lift;
+      weaponMesh.rotation.x -= 0.045 * lift;
     } else {
-      // pistol mag swap: tip the grip heel toward the camera, muzzle up-left
-      this.weaponMesh.position.x -= 0.025 * lift;
-      this.weaponMesh.position.y += 0.012 * lift;
-      this.weaponMesh.position.z -= 0.03 * lift;
-      this.weaponMesh.rotation.y += 0.14 * lift;
-      this.weaponMesh.rotation.z += 0.2 * lift;
-      this.weaponMesh.rotation.x -= 0.08 * lift;
+      weaponMesh.position.x -= 0.025 * lift;
+      weaponMesh.position.y += 0.012 * lift;
+      weaponMesh.position.z -= 0.03 * lift;
+      weaponMesh.rotation.y += 0.14 * lift;
+      weaponMesh.rotation.z += 0.2 * lift;
+      weaponMesh.rotation.x -= 0.08 * lift;
     }
 
     // 6. Wall block: probe straight ahead from the camera; when world geometry
-    // sits inside the weapon's reach, pull it in and raise the muzzle
-    // so it never pokes through obstacles (the viewmodel itself is unpickable,
-    // so the ray only sees real scene geometry).
+    // sits inside the weapon's reach, pull it in and raise the muzzle so it
+    // never pokes through obstacles (the viewmodel itself is unpickable, so
+    // the ray only sees real scene geometry)
     const camera = this.cameraRig.camera;
     this.blockRay.origin.copyFrom(camera.globalPosition);
     camera.getDirectionToRef(ViewModelRig.FORWARD, this.blockRay.direction);
     const blockHit = this.scene.pickWithRay(this.blockRay);
     let blockTarget = 0;
     if (blockHit && blockHit.hit) {
-      blockTarget = Math.min(
-        1,
-        (ViewModelRig.BLOCK_RAY_RANGE - blockHit.distance) / ViewModelRig.BLOCK_RAMP
-      );
+      blockTarget = Math.min(1, (ViewModelRig.BLOCK_RAY_RANGE - blockHit.distance) / ViewModelRig.BLOCK_RAMP);
     }
-    // The pistol is short — it only reacts when the wall is right in the face
     if (activeWeapon.id === "usp45") {
-      blockTarget = Math.max(0, blockTarget - 0.45) / 0.55;
+      blockTarget = Math.max(0, blockTarget - 0.45) / 0.55; // short gun: only right in the face
     } else if (activeWeapon.id === "mp44") {
       blockTarget *= 0.9;
     }
-    // The scope overlay owns the screen during ADS — don't fight the centering
-    blockTarget *= 1 - activeWeapon.adsAnimator.getProgress();
+    blockTarget *= 1 - activeWeapon.adsAnimator.getProgress(); // the scope owns the screen during ADS
     this.blockPull += (blockTarget - this.blockPull) * (1 - Math.exp(-10 * deltaTime));
     const block = this.blockPull;
-    this.weaponMesh.position.z -= 0.38 * block; // tuck the weapon in
-    this.weaponMesh.position.y -= 0.05 * block;
-    this.weaponMesh.rotation.x -= 1.0 * block; // raise the muzzle skyward
-    this.weaponMesh.rotation.y += 0.12 * block;
+    weaponMesh.position.z -= 0.38 * block;
+    weaponMesh.position.y -= 0.05 * block;
+    weaponMesh.rotation.x -= 1.0 * block; // raise the muzzle skyward
+    weaponMesh.rotation.y += 0.12 * block;
 
-    // 7. Sprint carry: the weapon drops low across the body with
-    // the muzzle swung up-left, pumping in rhythm with the stride. Yields to
-    // ADS and to the wall-block pose so the layers never over-rotate.
+    // 7. Sprint carry: the weapon drops low across the body with the muzzle
+    // swung up-left, pumping in rhythm with the stride. Yields to ADS and to
+    // the wall-block pose so the layers never over-rotate.
     const sprintTarget = isSprinting ? 1 : 0;
     this.sprintBlend += (sprintTarget - this.sprintBlend) * (1 - Math.exp(-8 * deltaTime));
-    const sprint =
-      this.sprintBlend * (1 - this.blockPull) * (1 - activeWeapon.adsAnimator.getProgress());
+    const sprint = this.sprintBlend * (1 - this.blockPull) * (1 - activeWeapon.adsAnimator.getProgress());
     if (sprint > 0.001) {
       this.sprintCycle += deltaTime * 18.6; // matches the sprint footstep cadence
-      const pump = Math.sin(this.sprintCycle) * 0.012; // vertical jolt per step
-      const sway = Math.sin(this.sprintCycle * 0.5) * 0.02; // alternating stride sway
-      this.weaponMesh.position.x += (-0.055 + sway) * sprint;
-      this.weaponMesh.position.y += (-0.115 + pump) * sprint;
-      this.weaponMesh.position.z -= 0.16 * sprint;
-      this.weaponMesh.rotation.x -= (0.62 - pump * 1.5) * sprint; // muzzle swings up
-      this.weaponMesh.rotation.y += 0.38 * sprint; // barrel angles across the body
-      this.weaponMesh.rotation.z += 0.3 * sprint; // grip rolls inward
+      const pump = Math.sin(this.sprintCycle) * 0.012;
+      const sway = Math.sin(this.sprintCycle * 0.5) * 0.02;
+      weaponMesh.position.x += (-0.055 + sway) * sprint;
+      weaponMesh.position.y += (-0.115 + pump) * sprint;
+      weaponMesh.position.z -= 0.16 * sprint;
+      weaponMesh.rotation.x -= (0.62 - pump * 1.5) * sprint;
+      weaponMesh.rotation.y += 0.38 * sprint;
+      weaponMesh.rotation.z += 0.3 * sprint;
     } else {
       this.sprintCycle = 0;
     }
@@ -336,21 +278,32 @@ export class ViewModelRig {
     // the hands trade weapons, then rises with the next one
     if (lowerAmount > 0.001) {
       const drop = ViewModelRig.smoothstep(lowerAmount);
-      this.weaponMesh.position.y -= 0.45 * drop;
-      this.weaponMesh.position.z -= 0.08 * drop;
-      this.weaponMesh.rotation.x -= 1.0 * drop; // muzzle dips away
-      this.weaponMesh.rotation.z += 0.18 * drop;
+      weaponMesh.position.y -= 0.45 * drop;
+      weaponMesh.position.z -= 0.08 * drop;
+      weaponMesh.rotation.x -= 1.0 * drop;
+      weaponMesh.rotation.z += 0.18 * drop;
     }
+
+    // 9. The arms chase wherever the hands ended up this frame
+    weaponMesh.computeWorldMatrix(true);
+    this.arms.update();
   }
 
-  // --- Sniper: procedural bolt cycle + bolt-action reload (unchanged) ---
-  // Returns the lift target (how far the rifle rolls in toward the camera).
+  // --- Sniper: procedural bolt cycle + bolt-action reload. Returns the lift
+  // target (how far the rifle rolls in toward the camera).
   private updateSniperAnimation(deltaTime: number, activeWeapon: BoltActionSniper): number {
+    const vm = this.models.m40a3;
+    const bolt = vm.pivots.boltGroup;
+    const hand = vm.hands.right;
+
     // Targets computed per state, then either set directly (mid-cycle, already
     // continuous) or eased toward (state transitions) so nothing pops.
     let boltRot = ViewModelRig.BOLT_REST_ROT;
     let boltZ = 0;
-    let armX = 0, armY = 0, armZ = 0;
+    let grab = 0; // 0 = on the grip, 1 = on the bolt handle
+    let armX = 0,
+      armY = 0,
+      armZ = 0; // extra travel beyond the handle pose
     let animatedDirectly = false;
     let liftTarget = 0;
 
@@ -364,47 +317,29 @@ export class ViewModelRig {
 
       if (timer < cycleStart && timer > cycleEnd) {
         const p = (cycleStart - timer) / (cycleStart - cycleEnd); // 0 to 1
-        const reach = ViewModelRig.ARM_TO_BOLT;
         const s = ViewModelRig.smoothstep;
-        let grab = 0; // how far the hand is from grip (0) to bolt handle (1)
 
         if (p < 0.18) {
-          // Reach up from the grip to the bolt handle
-          grab = s(p / 0.18);
+          grab = s(p / 0.18); // reach up from the grip to the handle
         } else if (p < 0.38) {
-          // Rotate the bolt open (hand stays on the handle)
-          grab = 1;
+          grab = 1; // rotate the bolt open
           const t = s((p - 0.18) / 0.2);
           boltRot = ViewModelRig.BOLT_REST_ROT + (ViewModelRig.BOLT_OPEN_ROT - ViewModelRig.BOLT_REST_ROT) * t;
         } else if (p < 0.56) {
-          // Pull the bolt back — ejects the spent case
-          grab = 1;
+          grab = 1; // pull back — ejects the spent case
           boltRot = ViewModelRig.BOLT_OPEN_ROT;
           boltZ = ViewModelRig.BOLT_PULL_Z * s((p - 0.38) / 0.18);
         } else if (p < 0.74) {
-          // Push forward — chambers the next round
-          grab = 1;
+          grab = 1; // push forward — chambers the next round
           boltRot = ViewModelRig.BOLT_OPEN_ROT;
           boltZ = ViewModelRig.BOLT_PULL_Z * (1 - s((p - 0.56) / 0.18));
         } else {
-          // Rotate closed and return the hand to the grip
-          const t = s((p - 0.74) / 0.26);
+          const t = s((p - 0.74) / 0.26); // close and return to the grip
           grab = 1 - t;
           boltRot = ViewModelRig.BOLT_OPEN_ROT + (ViewModelRig.BOLT_REST_ROT - ViewModelRig.BOLT_OPEN_ROT) * t;
         }
-
-        armX = reach.x * grab;
-        armY = reach.y * grab;
-        armZ = reach.z * grab + boltZ * grab; // hand rides the bolt as it slides
-        liftTarget = grab; // rifle tips inward while the hand is on the bolt
-
-        if (this.boltGroup) {
-          this.boltGroup.rotation.z = boltRot;
-          this.boltGroup.position.set(this.boltBasePos.x, this.boltBasePos.y, this.boltBasePos.z + boltZ);
-        }
-        if (this.rightArm) {
-          this.rightArm.position.set(armX, armY, armZ);
-        }
+        armZ = boltZ * grab; // hand rides the bolt as it slides
+        liftTarget = grab;
         animatedDirectly = true;
       }
     } else if (activeWeapon.state === "reloading") {
@@ -417,13 +352,12 @@ export class ViewModelRig {
       const elapsed = Math.max(0, activeWeapon.reloadTotal - activeWeapon.timer);
       const feedEnd = activeWeapon.reloadTotal - tClose;
       const s = ViewModelRig.smoothstep;
-      const reach = ViewModelRig.ARM_TO_BOLT;
       const pouch = ViewModelRig.ARM_POUCH;
       const port = ViewModelRig.ARM_PORT;
 
-      // Hand anchors: the pulled-back bolt handle, and the press-down point
-      // where the round gets pushed into the magazine
-      const handleZ = reach.z + ViewModelRig.BOLT_PULL_Z;
+      // Hand anchors relative to the handle pose: the pulled-back handle,
+      // and the press-down point where the round gets pushed into the magazine
+      const handleZ = ViewModelRig.BOLT_PULL_Z;
       const pressX = port.x;
       const pressY = port.y - 0.025;
       const pressZ = port.z + 0.045;
@@ -431,17 +365,13 @@ export class ViewModelRig {
       if (elapsed < tOpen) {
         // Phase 1 — open the action: reach up, rotate the handle, draw back
         const p = elapsed / tOpen;
-        const grab = s(Math.min(1, p / 0.35));
-        armX = reach.x * grab;
-        armY = reach.y * grab;
-        armZ = reach.z * grab;
+        grab = s(Math.min(1, p / 0.35));
         if (p >= 0.7) {
           boltRot = ViewModelRig.BOLT_OPEN_ROT;
           boltZ = ViewModelRig.BOLT_PULL_Z * s((p - 0.7) / 0.3);
-          armZ += boltZ; // hand rides the bolt back
+          armZ = boltZ; // hand rides the bolt back
         } else if (p >= 0.35) {
-          boltRot = ViewModelRig.BOLT_REST_ROT +
-            (ViewModelRig.BOLT_OPEN_ROT - ViewModelRig.BOLT_REST_ROT) * s((p - 0.35) / 0.35);
+          boltRot = ViewModelRig.BOLT_REST_ROT + (ViewModelRig.BOLT_OPEN_ROT - ViewModelRig.BOLT_REST_ROT) * s((p - 0.35) / 0.35);
         }
         liftTarget = grab;
       } else if (elapsed < feedEnd) {
@@ -449,14 +379,15 @@ export class ViewModelRig {
         // open port, press it down into the magazine; once per round
         boltRot = ViewModelRig.BOLT_OPEN_ROT;
         boltZ = ViewModelRig.BOLT_PULL_Z;
+        grab = 1;
         liftTarget = 1;
 
         const sinceFeed = elapsed - tOpen;
         const round = Math.min(activeWeapon.reloadRounds - 1, Math.floor(sinceFeed / tPer));
         const t01 = (sinceFeed - round * tPer) / tPer;
         // First trip leaves from the bolt handle, later trips from the press point
-        const fromX = round === 0 ? reach.x : pressX;
-        const fromY = round === 0 ? reach.y : pressY;
+        const fromX = round === 0 ? 0 : pressX;
+        const fromY = round === 0 ? 0 : pressY;
         const fromZ = round === 0 ? handleZ : pressZ;
 
         if (t01 < 0.38) {
@@ -485,56 +416,40 @@ export class ViewModelRig {
         const q = Math.min(1, (elapsed - feedEnd) / tClose);
         boltRot = ViewModelRig.BOLT_OPEN_ROT;
         boltZ = ViewModelRig.BOLT_PULL_Z;
+        grab = 1;
         if (q < 0.28) {
           const t = s(q / 0.28);
-          armX = pressX + (reach.x - pressX) * t;
-          armY = pressY + (reach.y - pressY) * t;
+          armX = pressX * (1 - t);
+          armY = pressY * (1 - t);
           armZ = pressZ + (handleZ - pressZ) * t;
         } else if (q < 0.55) {
           boltZ = ViewModelRig.BOLT_PULL_Z * (1 - s((q - 0.28) / 0.27));
-          armX = reach.x;
-          armY = reach.y;
-          armZ = reach.z + boltZ;
+          armZ = boltZ;
         } else if (q < 0.8) {
           boltZ = 0;
-          boltRot = ViewModelRig.BOLT_OPEN_ROT +
-            (ViewModelRig.BOLT_REST_ROT - ViewModelRig.BOLT_OPEN_ROT) * s((q - 0.55) / 0.25);
-          armX = reach.x;
-          armY = reach.y;
-          armZ = reach.z;
+          boltRot = ViewModelRig.BOLT_OPEN_ROT + (ViewModelRig.BOLT_REST_ROT - ViewModelRig.BOLT_OPEN_ROT) * s((q - 0.55) / 0.25);
         } else {
           boltZ = 0;
           boltRot = ViewModelRig.BOLT_REST_ROT;
-          const g = 1 - s((q - 0.8) / 0.2);
-          armX = reach.x * g;
-          armY = reach.y * g;
-          armZ = reach.z * g;
+          grab = 1 - s((q - 0.8) / 0.2);
         }
         liftTarget = q < 0.8 ? 1 : 1 - s((q - 0.8) / 0.2);
-      }
-
-      if (this.boltGroup) {
-        this.boltGroup.rotation.z = boltRot;
-        this.boltGroup.position.set(this.boltBasePos.x, this.boltBasePos.y, this.boltBasePos.z + boltZ);
-      }
-      if (this.rightArm) {
-        this.rightArm.position.set(armX, armY, armZ);
       }
       animatedDirectly = true;
     }
 
-    if (!animatedDirectly) {
-      // Ease toward the target pose (rest or reload) — smooth, no pops
+    if (animatedDirectly) {
+      bolt.rotation.z = boltRot;
+      bolt.position.set(this.boltBasePos.x, this.boltBasePos.y, this.boltBasePos.z + boltZ);
+      hand.offset.set(armX, armY, armZ);
+      hand.altBlend = grab;
+    } else {
+      // Ease toward the rest pose — smooth, no pops (covers cancelled reloads)
       const k = 1 - Math.exp(-14 * deltaTime);
-      if (this.boltGroup) {
-        this.boltGroup.rotation.z += (boltRot - this.boltGroup.rotation.z) * k;
-        this.boltGroup.position.z += (this.boltBasePos.z - this.boltGroup.position.z) * k;
-      }
-      if (this.rightArm) {
-        this.rightArm.position.x += (armX - this.rightArm.position.x) * k;
-        this.rightArm.position.y += (armY - this.rightArm.position.y) * k;
-        this.rightArm.position.z += (armZ - this.rightArm.position.z) * k;
-      }
+      bolt.rotation.z += (boltRot - bolt.rotation.z) * k;
+      bolt.position.z += (this.boltBasePos.z - bolt.position.z) * k;
+      hand.offset.scaleInPlace(1 - k);
+      hand.altBlend += (0 - hand.altBlend) * k;
     }
 
     return liftTarget;
@@ -543,9 +458,12 @@ export class ViewModelRig {
   // --- MP44: reciprocating bolt/charging handle, curved-mag reload, support
   // hand leaving the fore-end to run the magazine and empty-reload charge.
   private updateMp44Animation(deltaTime: number, weapon: Mp44): number {
+    const vm = this.models.mp44;
     const s = ViewModelRig.smoothstep;
     let boltBack = weapon.getBoltBack();
-    let armX = 0, armY = 0, armZ = 0;
+    let armX = 0,
+      armY = 0,
+      armZ = 0;
     let magDist = 0;
     let magVisible = true;
     let liftTarget = 0;
@@ -623,59 +541,36 @@ export class ViewModelRig {
       }
     }
 
-    if (this.mp44BoltGroup) {
-      this.mp44BoltGroup.position.set(
-        this.mp44BoltBasePos.x,
-        this.mp44BoltBasePos.y,
-        this.mp44BoltBasePos.z - ViewModelRig.MP44_BOLT_TRAVEL * boltBack
-      );
-    }
+    const bolt = vm.pivots.boltGroup;
+    bolt.position.set(this.mp44BoltBasePos.x, this.mp44BoltBasePos.y, this.mp44BoltBasePos.z - ViewModelRig.MP44_BOLT_TRAVEL * boltBack);
 
-    if (this.mp44MagGroup) {
-      this.mp44MagGroup.setEnabled(magVisible);
-      this.mp44MagGroup.position.set(
-        this.mp44MagBasePos.x + ViewModelRig.MP44_MAG_DIR.x * magDist,
-        this.mp44MagBasePos.y + ViewModelRig.MP44_MAG_DIR.y * magDist,
-        this.mp44MagBasePos.z + ViewModelRig.MP44_MAG_DIR.z * magDist
-      );
-    }
+    const mag = vm.pivots.magGroup;
+    mag.setEnabled(magVisible);
+    mag.position.set(
+      this.mp44MagBasePos.x + ViewModelRig.MP44_MAG_DIR.x * magDist,
+      this.mp44MagBasePos.y + ViewModelRig.MP44_MAG_DIR.y * magDist,
+      this.mp44MagBasePos.z + ViewModelRig.MP44_MAG_DIR.z * magDist
+    );
 
-    if (this.mp44SupportArm) {
-      if (animatedDirectly) {
-        this.mp44SupportArm.position.set(armX, armY, armZ);
-      } else {
-        const k = 1 - Math.exp(-14 * deltaTime);
-        this.mp44SupportArm.position.x += (0 - this.mp44SupportArm.position.x) * k;
-        this.mp44SupportArm.position.y += (0 - this.mp44SupportArm.position.y) * k;
-        this.mp44SupportArm.position.z += (0 - this.mp44SupportArm.position.z) * k;
-      }
-    }
-
+    this.settleHand(vm.hands.left.offset, animatedDirectly, armX, armY, armZ, deltaTime);
     return liftTarget;
   }
 
   // --- Pistol: slide blowback, hammer rock, and the mag-swap reload where
   // the support hand drops the spent mag and slaps a fresh one home.
-  // Returns the lift target (how far the pistol rolls in toward the camera).
   private updatePistolAnimation(deltaTime: number, weapon: Pistol): number {
+    const vm = this.models.usp45;
     const s = ViewModelRig.smoothstep;
 
     // Slide rides its blowback value every frame; the lock-back on an empty
     // mag and the slam home on slide release both come through getSlideBack()
     const slideBack = weapon.getSlideBack();
-    if (this.slideGroup) {
-      this.slideGroup.position.set(
-        this.slideBasePos.x,
-        this.slideBasePos.y,
-        this.slideBasePos.z - ViewModelRig.SLIDE_TRAVEL * slideBack
-      );
-    }
-    if (this.hammerGroup) {
-      this.hammerGroup.rotation.x =
-        ViewModelRig.HAMMER_REST_ROT + ViewModelRig.HAMMER_KICK_ROT * slideBack;
-    }
+    vm.pivots.slideGroup.position.set(this.slideBasePos.x, this.slideBasePos.y, this.slideBasePos.z - ViewModelRig.SLIDE_TRAVEL * slideBack);
+    vm.pivots.hammerGroup.rotation.x = ViewModelRig.HAMMER_REST_ROT + ViewModelRig.HAMMER_KICK_ROT * slideBack;
 
-    let armX = 0, armY = 0, armZ = 0;
+    let armX = 0,
+      armY = 0,
+      armZ = 0;
     let magDist = 0;
     let magVisible = true;
     let liftTarget = 0;
@@ -723,27 +618,25 @@ export class ViewModelRig {
       }
     }
 
-    if (this.magGroup) {
-      this.magGroup.setEnabled(magVisible);
-      this.magGroup.position.set(
-        this.magBasePos.x + ViewModelRig.MAG_DIR.x * magDist,
-        this.magBasePos.y + ViewModelRig.MAG_DIR.y * magDist,
-        this.magBasePos.z + ViewModelRig.MAG_DIR.z * magDist
-      );
-    }
+    const mag = vm.pivots.magGroup;
+    mag.setEnabled(magVisible);
+    mag.position.set(
+      this.magBasePos.x + ViewModelRig.MAG_DIR.x * magDist,
+      this.magBasePos.y + ViewModelRig.MAG_DIR.y * magDist,
+      this.magBasePos.z + ViewModelRig.MAG_DIR.z * magDist
+    );
 
-    if (this.supportArm) {
-      if (animatedDirectly) {
-        this.supportArm.position.set(armX, armY, armZ);
-      } else {
-        // Ease back to the two-handed wrap (covers reload cancel on swap)
-        const k = 1 - Math.exp(-14 * deltaTime);
-        this.supportArm.position.x += (0 - this.supportArm.position.x) * k;
-        this.supportArm.position.y += (0 - this.supportArm.position.y) * k;
-        this.supportArm.position.z += (0 - this.supportArm.position.z) * k;
-      }
-    }
-
+    this.settleHand(vm.hands.left.offset, animatedDirectly, armX, armY, armZ, deltaTime);
     return liftTarget;
+  }
+
+  // Hand offset: written directly while an animation owns it, eased back to
+  // the grip otherwise (covers reload cancel on swap)
+  private settleHand(offset: Vector3, direct: boolean, x: number, y: number, z: number, deltaTime: number): void {
+    if (direct) {
+      offset.set(x, y, z);
+    } else {
+      offset.scaleInPlace(Math.exp(-14 * deltaTime));
+    }
   }
 }

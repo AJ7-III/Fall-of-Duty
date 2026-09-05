@@ -5,7 +5,7 @@ import { ADSAnimator } from "./ADSAnimator";
 import { fireHitscanRay } from "./WeaponTypes";
 import type { Weapon, WeaponConfig, WeaponState } from "./WeaponTypes";
 import { Effects } from "../rendering/Effects";
-import { AssetLoader } from "../engine/AssetLoader";
+import { weaponAdsFrames, weaponConfig } from "./WeaponData";
 
 type ReloadEvent = { time: number; kind: "boltOpen" | "insert" | "boltClose" };
 
@@ -40,13 +40,11 @@ export class BoltActionSniper implements Weapon {
   // Recoil offset on weapon mesh (visual model translation kickback)
   public visualKickZ: number = 0;
 
-  constructor(loader: AssetLoader) {
-    this.config = loader.loadWeaponConfig();
+  constructor() {
+    this.config = weaponConfig("m40a3");
     this.clipAmmo = this.config.magSize;
     this.reserveAmmo = this.config.maxReserveAmmo;
-
-    const adsAnimData = loader.loadAdsAnimation();
-    this.adsAnimator = new ADSAnimator(adsAnimData);
+    this.adsAnimator = new ADSAnimator(weaponAdsFrames("m40a3"));
   }
 
   public update(

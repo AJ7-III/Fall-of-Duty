@@ -1,6 +1,7 @@
 import { LoadAssetContainerAsync } from "@babylonjs/core";
 import "@babylonjs/loaders/glTF/2.0";
 import type { AssetContainer, Scene } from "@babylonjs/core";
+import { assetUrl } from "../assets/paths";
 
 // One shared rigged-soldier asset (Mixamo "Vanguard" body, 49-joint rig,
 // Idle/Walk/Run clips baked in) loaded once per scene; every SoldierBody
@@ -19,7 +20,7 @@ let entry: Entry | null = null;
 export function preloadSoldierModel(scene: Scene): void {
   const e: Entry = { scene, container: null, waiters: [] };
   entry = e;
-  LoadAssetContainerAsync("/models/soldier.glb", scene)
+  LoadAssetContainerAsync(assetUrl("models/soldier.glb"), scene)
     .then((container) => {
       if (entry !== e || scene.isDisposed) return;
       e.container = container;

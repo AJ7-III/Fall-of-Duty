@@ -1,5 +1,5 @@
 import { Scene, Mesh, MeshBuilder, Vector3, Vector2, DynamicTexture } from "@babylonjs/core";
-import { AssetLoader } from "../engine/AssetLoader";
+import { WorldMaterials } from "./materials/WorldMaterials";
 
 export class Target {
   public mesh: Mesh;
@@ -16,21 +16,21 @@ export class Target {
   private resetTimer: number = 0;
   private resetDelay: number = 2.0; // reset target after 2 seconds
 
-  constructor(position: Vector3, scene: Scene, loader: AssetLoader) {
+  constructor(position: Vector3, scene: Scene, materials: WorldMaterials) {
     // Create target group/root
     this.mesh = new Mesh("target_root", scene);
     this.mesh.position.copyFrom(position);
 
     // Target Stand/Post (ground to target base)
     const post = MeshBuilder.CreateCylinder("target_post", { height: 1.2, diameter: 0.05, tessellation: 8 }, scene);
-    post.material = loader.createMetalMaterial(scene);
+    post.material = materials.createMetalMaterial();
     post.position.set(0, -0.6, 0);
     post.parent = this.mesh;
 
     // Printed paper bullseye board — per-target material instance so this
     // board's holes don't appear on every other target
     const board = MeshBuilder.CreateBox("target_board", { width: 0.8, height: 1.0, depth: 0.03 }, scene);
-    const boardMat = loader.createTargetBoardMaterial(scene);
+    const boardMat = materials.createTargetBoardMaterial();
     board.material = boardMat;
     this.boardTex = boardMat.diffuseTexture as DynamicTexture;
     board.position.set(0, 0.4, 0);

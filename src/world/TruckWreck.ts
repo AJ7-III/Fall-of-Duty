@@ -9,7 +9,7 @@ import {
   ParticleSystem,
 } from "@babylonjs/core";
 import type { AbstractMesh, PickingInfo } from "@babylonjs/core";
-import { AssetLoader } from "../engine/AssetLoader";
+import { WorldMaterials } from "./materials/WorldMaterials";
 import { Effects } from "../rendering/Effects";
 import type { GlassPane } from "./wreckShared";
 import {
@@ -36,7 +36,7 @@ export class TruckWreck {
 
   constructor(
     scene: Scene,
-    loader: AssetLoader,
+    materials: WorldMaterials,
     position: Vector3,
     yaw: number,
     registerStatic: (mat: StandardMaterial, mesh: Mesh) => void
@@ -48,7 +48,7 @@ export class TruckWreck {
     this.root.rotation.y = yaw;
 
     // --- Materials (trim/steel/lamp shared with the car wreck by name) ---
-    const boxMat = loader.createContainerMaterial(scene, "truckbox", "#cfd3cc", "#b9bdb6");
+    const boxMat = materials.createContainerMaterial("truckbox", "#cfd3cc", "#b9bdb6");
 
     const cabMat = getOrCreateColorMat(
       scene, "truckCabMat",
@@ -190,7 +190,7 @@ export class TruckWreck {
     }
 
     // --- Shard burst (shared, manual-emit) ---
-    this.shards = createGlassShardSystem(scene, loader, "truckGlassShards", this.shardAnchor);
+    this.shards = createGlassShardSystem(scene, materials, "truckGlassShards", this.shardAnchor);
   }
 
   // Laminated windshield: near-vertical slab with its own crack texture

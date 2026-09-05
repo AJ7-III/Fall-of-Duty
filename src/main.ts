@@ -1,5 +1,6 @@
 import "./style.css";
 import { Game } from "./engine/Game";
+import { installDevTools } from "./engine/DevTools";
 
 let game: Game | null = null;
 const gameWindow = window as unknown as { __game?: Game };
@@ -9,8 +10,9 @@ const startGame = (): void => {
     gameWindow.__game?.dispose();
     game = new Game("renderCanvas");
     if (import.meta.env.DEV) {
-      // Debug handle for console inspection (FPS hitches, weapon state, etc.)
+      // Console tooling: `fod.*` (see DevTools.ts) plus a raw handle
       gameWindow.__game = game;
+      installDevTools(game);
     }
   } catch (err) {
     console.error("Failed to initialize game:", err);

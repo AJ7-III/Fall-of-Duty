@@ -4,19 +4,22 @@
 // can share one source of truth without a circular import.
 
 const TRASH_TALK_KEY = "fallOfDuty.muteTrashTalk";
+const GRAPHICS_KEY = "fallOfDuty.graphics";
 
-function readBool(key: string, fallback: boolean): boolean {
+export type GraphicsQuality = "high" | "balanced" | "performance";
+const GRAPHICS_LEVELS: ReadonlyArray<GraphicsQuality> = ["high", "balanced", "performance"];
+
+function read(key: string): string | null {
   try {
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === "1";
+    return localStorage.getItem(key);
   } catch {
-    return fallback; // storage disabled (private mode / blocked) — use default
+    return null; // storage disabled (private mode / blocked) — use defaults
   }
 }
 
-function writeBool(key: string, value: boolean): void {
+function write(key: string, value: string): void {
   try {
-    localStorage.setItem(key, value ? "1" : "0");
+    localStorage.setItem(key, value);
   } catch {
     // storage disabled — the setting simply won't persist across reloads
   }
@@ -24,9 +27,17 @@ function writeBool(key: string, value: boolean): void {
 
 export const Settings = {
   getTrashTalkMuted(): boolean {
-    return readBool(TRASH_TALK_KEY, true);
+    const v = read(TRASH_TALK_KEY);
+    return v === null ? true : v === "1";
   },
   setTrashTalkMuted(muted: boolean): void {
-    writeBool(TRASH_TALK_KEY, muted);
+    write(TRASH_TALK_KEY, muted ? "1" : "0");
+  },
+  getGraphicsQuality(): GraphicsQuality {
+    const v = read(GRAPHICS_KEY) as GraphicsQuality | null;
+    return v && GRAPHICS_LEVELS.includes(v) ? v : "high";
+  },
+  setGraphicsQuality(q: GraphicsQuality): void {
+    write(GRAPHICS_KEY, q);
   },
 };

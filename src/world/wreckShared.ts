@@ -11,7 +11,7 @@ import {
   ParticleSystem,
 } from "@babylonjs/core";
 import type { AbstractMesh, PickingInfo } from "@babylonjs/core";
-import { AssetLoader } from "../engine/AssetLoader";
+import { WorldMaterials } from "./materials/WorldMaterials";
 import { Effects } from "../rendering/Effects";
 
 // Plumbing shared by CarWreck and TruckWreck. The two wrecks build different
@@ -209,12 +209,12 @@ function paintCrack(tex: DynamicTexture, u: number, v: number): void {
 // movable anchor that hitGlassPane drags to whichever pane just broke.
 export function createGlassShardSystem(
   scene: Scene,
-  loader: AssetLoader,
+  materials: WorldMaterials,
   name: string,
   anchor: Vector3
 ): ParticleSystem {
   const shards = new ParticleSystem(name, 400, scene);
-  shards.particleTexture = loader.createRainStreakTexture(scene); // small pale sliver reads as glass
+  shards.particleTexture = materials.createRainStreakTexture(); // small pale sliver reads as glass
   shards.emitter = anchor;
   shards.minEmitBox = new Vector3(-0.4, -0.18, -0.4);
   shards.maxEmitBox = new Vector3(0.4, 0.18, 0.4);

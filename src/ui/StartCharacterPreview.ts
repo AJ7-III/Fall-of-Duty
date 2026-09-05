@@ -11,6 +11,8 @@ import {
   Vector3,
 } from "@babylonjs/core";
 import "@babylonjs/loaders/glTF/2.0";
+import { assetUrl } from "../assets/paths";
+import { soldierMaterialFor } from "../bots/SoldierBody";
 
 export class StartCharacterPreview {
   private canvas: HTMLCanvasElement | null;
@@ -101,7 +103,7 @@ export class StartCharacterPreview {
     if (!this.scene || this.loadStarted) return;
     this.loadStarted = true;
 
-    LoadAssetContainerAsync("/models/soldier.glb", this.scene)
+    LoadAssetContainerAsync(assetUrl("models/soldier.glb"), this.scene)
       .then((container) => {
         if (!this.scene || this.scene.isDisposed || this.disposed) {
           container.dispose();
@@ -113,6 +115,10 @@ export class StartCharacterPreview {
         for (const mesh of container.meshes) {
           mesh.isPickable = false;
           if (!mesh.parent) mesh.parent = root;
+          // the operator wears exactly what the in-match body and arms wear
+          if (mesh.material) {
+            mesh.material = soldierMaterialFor(this.scene, "player", mesh.name.toLowerCase().includes("visor"), mesh.material);
+          }
         }
 
         const bounds = root.getHierarchyBoundingVectors(true);
