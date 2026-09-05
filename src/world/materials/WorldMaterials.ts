@@ -427,51 +427,121 @@ export class WorldMaterials {
     );
   }
 
-  // Wet flagstone pavers for the walkways: jittered cobbles with domed
-  // shading over dark mortar, moss creeping into the gaps
+  // Flagstone lay for the walkways: an irregular grid of flat polygonal
+  // slabs with tight dark joints, each slab its own tone, worn corners and
+  // moss in the gaps. The height field is flat slabs over sunken joints so
+  // the relief is edges, not domes.
+  private stoneLayout: Array<{ pts: Array<[number, number]>; tone: number; wear: number }> | null = null;
+
+  private getStoneLayout(s: number): Array<{ pts: Array<[number, number]>; tone: number; wear: number }> {
+    if (this.stoneLayout) return this.stoneLayout;
+    const cols = 6;
+    const cell = s / cols;
+    const jitter = cell * 0.22;
+    // jittered lattice corners shared between neighbours so slabs interlock
+    const corner = (i: number, j: number): [number, number] => {
+      const seedX = ((i * 73 + j * 151) % 97) / 97;
+      const seedZ = ((i * 31 + j * 17) % 89) / 89;
+      return [i * cell + (seedX - 0.5) * jitter, j * cell + (seedZ - 0.5) * jitter];
+    };
+    const slabs: Array<{ pts: Array<[number, number]>; tone: number; wear: number }> = [];
+    for (let j = 0; j < cols; j++) {
+      for (let i = 0; i < cols; i++) {
+        const stagger = j % 2 ? 0.5 : 0; // running bond
+        const pts: Array<[number, number]> = [
+          corner(i + stagger, j),
+          corner(i + 1 + stagger, j),
+          corner(i + 1 + stagger, j + 1),
+          corner(i + stagger, j + 1),
+        ];
+        slabs.push({ pts, tone: (i * 7 + j * 3) % 6, wear: ((i * 13 + j * 29) % 10) / 10 });
+      }
+    }
+    this.stoneLayout = slabs;
+    return slabs;
+  }
+
+  private static tracePoly(
+    ctx: CanvasRenderingContext2D,
+    pts: Array<[number, number]>,
+    ox: number,
+    oy: number,
+    inset: number
+  ): void {
+    // shrink toward the centroid for the joint gap
+    const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+    const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    ctx.beginPath();
+    pts.forEach(([x, y], k) => {
+      const dx = x - cx;
+      const dy = y - cy;
+      const len = Math.hypot(dx, dy) || 1;
+      const px = x - (dx / len) * inset + ox;
+      const py = y - (dy / len) * inset + oy;
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.closePath();
+  }
+
   public createStoneWalkwayMaterial(uScale: number = 2, vScale: number = 2): PBRMaterial {
+    const slabs = this.getStoneLayout(512);
+    const wrapOffsets: Array<[number, number]> = [
+      [-512, -512],
+      [0, -512],
+      [512, -512],
+      [-512, 0],
+      [0, 0],
+      [512, 0],
+      [-512, 512],
+      [0, 512],
+      [512, 512],
+    ];
     return canvasMat(
       this.scene,
       `stoneWalkMat_${uScale}_${vScale}`,
       512,
-      { rough: 0.55, wet: 0.8, roughVar: 0.3, bump: 1.3, u: uScale, v: vScale },
+      {
+        rough: 0.62,
+        wet: 0.8,
+        roughVar: 0.2,
+        bump: 1.6,
+        u: uScale,
+        v: vScale,
+        height: (ctx, s) => {
+          ctx.fillStyle = "#2a2a2a"; // joints sit low
+          ctx.fillRect(0, 0, s, s);
+          for (const slab of slabs) {
+            const lift = 200 + slab.wear * 40; // slabs sit a little unevenly
+            ctx.fillStyle = `rgb(${lift},${lift},${lift})`;
+            for (const [ox, oy] of wrapOffsets) {
+              WorldMaterials.tracePoly(ctx, slab.pts, ox, oy, 5);
+              ctx.fill();
+            }
+          }
+          paintNoise(ctx, s, ["#9a9a9a", "#b8b8b8"], 400, 1, 3, 0.35); // pitting
+        },
+      },
       (ctx, s) => {
-        // rain-slick stone
-        ctx.fillStyle = "#3b3a37"; // wet mortar
+        ctx.fillStyle = "#2f2e2b"; // wet mortar
         ctx.fillRect(0, 0, s, s);
-        paintNoise(ctx, s, ["#34332f", "#42413d"], 120, 4, 16, 0.4);
-
-        // staggered rows of rounded stones, each domed with its own gradient
-        const tones = ["#73716a", "#67665f", "#7c7a71", "#5d5c56", "#6f6c62", "#666258"];
-        const rows = 5;
-        const cell = s / rows;
-        for (let row = 0; row < rows; row++) {
-          const xOff = (row % 2) * (cell / 2);
-          for (let col = -1; col <= rows; col++) {
-            const cx = col * cell + xOff + cell / 2 + (Math.random() - 0.5) * 8;
-            const cy = row * cell + cell / 2 + (Math.random() - 0.5) * 8;
-            const rx = cell * (0.39 + Math.random() * 0.07);
-            const ry = cell * (0.36 + Math.random() * 0.07);
-            const rot = (Math.random() - 0.5) * 0.5;
-
-            const g = ctx.createRadialGradient(cx - rx * 0.3, cy - ry * 0.35, 2, cx, cy, rx * 1.25);
-            const tone = tones[(Math.random() * tones.length) | 0];
-            g.addColorStop(0, "#7e7c74");
-            g.addColorStop(0.5, tone);
-            g.addColorStop(0.92, tone);
-            g.addColorStop(1, "#45443f");
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.ellipse(cx, cy, rx, ry, rot, 0, Math.PI * 2);
+        paintNoise(ctx, s, ["#3a3a36", "#282825"], 120, 4, 16, 0.4);
+        const tones = ["#6e6c66", "#63625c", "#77756d", "#5c5b55", "#6a675f", "#615e57"];
+        for (const slab of slabs) {
+          for (const [ox, oy] of wrapOffsets) {
+            WorldMaterials.tracePoly(ctx, slab.pts, ox, oy, 5);
+            ctx.fillStyle = tones[slab.tone];
             ctx.fill();
+            // a darker rim where the worn edge falls away toward the joint
+            ctx.strokeStyle = "rgba(30,30,28,0.45)";
+            ctx.lineWidth = 3;
+            ctx.stroke();
           }
         }
-
-        // chips, grime and a few wet glints
-        paintNoise(ctx, s, ["#4a4944", "#3e3d39"], 140, 1, 4, 0.4);
-        paintNoise(ctx, s, ["#8d8b82", "#96948b"], 60, 1, 3, 0.35);
-        // moss creeping into the joints
-        paintNoise(ctx, s, ["#46503a", "#3e4834"], 40, 2, 7, 0.3);
+        // grime, chips, wet glints and moss in the joints
+        paintNoise(ctx, s, ["#4a4944", "#3e3d39"], 180, 1, 5, 0.35);
+        paintNoise(ctx, s, ["#8d8b82", "#96948b"], 70, 1, 3, 0.3);
+        paintNoise(ctx, s, ["#46503a", "#3e4834"], 50, 2, 7, 0.3);
       }
     );
   }

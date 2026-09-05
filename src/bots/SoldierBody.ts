@@ -6,7 +6,6 @@ import {
   StandardMaterial,
   Color3,
   DynamicTexture,
-  Texture,
   TransformNode,
   Vector3,
 } from "@babylonjs/core";
@@ -14,7 +13,7 @@ import type { AbstractMesh, AnimationGroup, AssetContainer, Material, Observer, 
 import { whenSoldierModelReady } from "./SoldierAssets";
 import { terminatorSkin } from "./TerminatorSkin";
 import { registerDynamicShadowCaster } from "../rendering/dynamicShadows";
-import { assetUrl } from "../assets/paths";
+import { soldierSkinTextures } from "./SoldierSkin";
 import { captureBoneFrame, dirToLocal, frameQuat, solveTwoBone } from "../anim/boneMath";
 import type { TwoBoneChain } from "../anim/boneMath";
 
@@ -169,40 +168,57 @@ export function playerMaterials(scene: Scene): SoldierMats {
 
 export type SoldierTint = "opfor" | "player";
 
-const TINTS: Record<SoldierTint, Color3> = {
-  opfor: new Color3(0.9, 0.95, 0.84), // woodland kit, cooled slightly
-  player: new Color3(1.12, 1.04, 0.85), // the same kit warmed toward tan
+// Placeholder tint over the glb's beige plate for the few frames before the
+// recoloured skin lands (see SoldierSkin.ts)
+const PLACEHOLDER: Record<SoldierTint, Color3> = {
+  opfor: new Color3(0.55, 0.62, 0.42),
+  player: new Color3(0.4, 0.42, 0.46),
 };
 
-// The scene is a StandardMaterial world (hemispheric + directional light,
-// linear fog, frozen defines) — the glb's own PBR material is rebuilt over
-// the repainted woodland-camo albedo (the glb's sci-fi plate beige rebaked
-// into war clothing), keeping its normal map, tinted per faction, with a
-// wet-fabric roughness. Shared by every soldier body AND the first-person
-// arms, so the hands on the rifle are painted exactly like the body on the
-// death cam.
+// The soldier's material: the glb's own PBR setup rebuilt with a faction
+// recolour of its albedo (SoldierSkin), its normal map kept, and a derived
+// roughness/metal map so plates, straps and buckles each read as what they
+// are. Shared by every soldier body AND the first-person arms, so the hands
+// on the rifle are painted exactly like the body on the death cam.
 export function soldierMaterialFor(scene: Scene, tint: SoldierTint, isVisor: boolean, src: Material | null): PBRMaterial {
   const matName = `soldierSkin_${tint}_${isVisor ? "visor" : "body"}`;
   const cached = scene.getMaterialByName(matName) as PBRMaterial | null;
   if (cached) return cached;
   const mat = new PBRMaterial(matName, scene);
-  let albedo = scene.getTextureByName("soldierFatiguesTex") as Texture | null;
-  if (!albedo) {
-    albedo = new Texture(assetUrl("models/soldier_fatigues.jpg"), scene, false, false); // glTF UVs — no Y flip
-    albedo.name = "soldierFatiguesTex";
-    albedo.anisotropicFilteringLevel = 8;
-  }
-  mat.albedoTexture = albedo;
-  mat.albedoColor = TINTS[tint];
   const pbr = src as PBRMaterial | null;
   if (pbr?.bumpTexture) {
     mat.bumpTexture = pbr.bumpTexture; // keep the glb's normal map detail
     mat.invertNormalMapX = pbr.invertNormalMapX;
     mat.invertNormalMapY = pbr.invertNormalMapY;
   }
-  mat.metallic = isVisor ? 0.5 : 0.05;
-  mat.roughness = isVisor ? 0.22 : 0.62; // rain on cloth and plate
   mat.enableSpecularAntiAliasing = true;
+  if (isVisor) {
+    mat.albedoColor = new Color3(0.08, 0.09, 0.1);
+    mat.metallic = 0.5;
+    mat.roughness = 0.22;
+    return mat;
+  }
+  mat.albedoTexture = pbr?.albedoTexture ?? null;
+  mat.albedoColor = PLACEHOLDER[tint];
+  mat.metallic = 0.05;
+  mat.roughness = 0.62;
+  if (pbr?.albedoTexture) {
+    soldierSkinTextures(scene, tint, pbr.albedoTexture)
+      .then(({ albedo, orm }) => {
+        if (scene.isDisposed) return;
+        mat.unfreeze();
+        mat.albedoTexture = albedo;
+        mat.albedoColor = Color3.White();
+        mat.metallicTexture = orm;
+        mat.useRoughnessFromMetallicTextureGreen = true;
+        mat.useMetallnessFromMetallicTextureBlue = true;
+        mat.useRoughnessFromMetallicTextureAlpha = false;
+        mat.metallic = 1;
+        mat.roughness = 1;
+        mat.freeze();
+      })
+      .catch((err) => console.warn("soldier skin recolour skipped:", err));
+  }
   mat.freeze();
   return mat;
 }

@@ -12,7 +12,8 @@ A browser-native 1v1 first-person shooter. You spawn in Ship Box, a rain-soaked 
 - First-person arms cut from the same rigged soldier as the third-person body, posed by inverse kinematics against each weapon's grip points, so the hands match the body you see on the death cam
 - Killstreaks: UAV radar at three, an airstrike laptop at five, an Apache gunship at seven
 - A staged death: time slows, the body collapses in one of three ways, and a camera that never clips into a wall pulls back to watch
-- Native-resolution rendering with MSAA, ambient occlusion and a sharpen pass, three quality tiers, and an automatic step-down when the frame rate can't hold
+- Physically based rendering throughout: every painted surface carries a normal map and an occlusion/roughness map, rain leaves a sheen with standing water in the low spots, and a painted, prefiltered environment feeds every reflection from wet steel to chrome
+- Native-resolution rendering with MSAA, ambient occlusion, a sharpen pass and colour grading, three quality tiers (the high tier gives the soldiers real shadows), and an automatic step-down when the frame rate can't hold
 - Custom callsign, a trash-talking rival with voice lines (mutable in the settings), kill feed, streak callouts, an end-of-match report
 
 ## Controls
@@ -82,13 +83,13 @@ src/
   ui/                     start screen, HUD, minimap, pause and end screens, rival voice
   data/                   weapon tuning and ADS keyframes as JSON
   assets/                 voice clips and the public-path helper
-public/models/            the one external asset: a rigged soldier (glTF) and its repaint
+public/models/            the one external asset: a rigged soldier (glTF); its skin is recoloured at runtime
 ```
 
 Some design points worth knowing before changing things:
 
 - **Materials are frozen after load.** Every light exists from the start (muzzle flash and explosion lights sit at zero intensity in a pool), so no shader ever recompiles mid-match.
-- **The soldier is one shared glTF.** Bots, the player's corpse, and the first-person arms all instantiate it. The arms trim their own copy of the mesh to the arm bone chains and pose the skeleton procedurally; nothing is keyframed.
+- **The soldier is one shared glTF.** Bots, the player's corpse, and the first-person arms all instantiate it. The arms trim their own copy of the mesh to the arm bone chains and pose the skeleton procedurally; nothing is keyframed. The skin is the model's own albedo read back from the GPU and recoloured per faction (olive OPFOR, slate player), so every strap and plate edge survives.
 - **Bots move through the player's physics.** One kinematic solver serves both, so the opponent obeys exactly the movement rules you do.
 - **Difficulty is data.** `BotConfig.ts` holds five named presets; the 1 to 10 slider interpolates between them.
 
@@ -98,4 +99,4 @@ In a dev build the console exposes `fod`, which can freeze the loop, step exact 
 
 ## Credits
 
-Built in a two-day sprint by AJ7-III with the initial Claude Fable 5 release, then overhauled. The soldier is Mixamo's Vanguard character with a repainted uniform; every other visual is generated in code. Voice lines were recorded for this project.
+Built in a two-day sprint by AJ7-III with the initial Claude Fable 5 release, then overhauled. The soldier is Mixamo's Vanguard character, recoloured in code; every other visual is generated in code. Voice lines were recorded for this project.
