@@ -31,9 +31,11 @@ import type { ArmsTuning } from "../viewmodels/ArmsRig";
 //   fod.slowmo(factor)      time scale for the live loop
 //   fod.perf(frames)        step N frames and report CPU/GPU frame time + draw calls
 //   fod.lib                 a few Babylon classes for console experiments
-//   fod.inspect(yaw, pitch, focus)  orbit the whole first-person rig around a
-//                           camera-space point (default: the weapon) to see
-//                           the hands from another angle; inspect() resets
+//   fod.inspect(yaw, pitch, focus, center)  orbit the whole first-person rig
+//                           around a camera-space point (default: the weapon)
+//                           to see the hands from another angle, optionally
+//                           bringing that point to the screen centre;
+//                           inspect() resets
 //
 // These exist so animation, arm poses and bot behaviour can be inspected
 // frame by frame without a pointer lock — the same hooks the automated
@@ -60,7 +62,7 @@ export interface DevApi {
   teleport(x: number, z: number, yaw?: number, pitch?: number): void;
   kill(): void;
   slowmo(factor: number): void;
-  inspect(yaw?: number, pitch?: number, focus?: [number, number, number]): void;
+  inspect(yaw?: number, pitch?: number, focus?: [number, number, number], center?: boolean): void;
   perf(frames?: number): Promise<{ cpuMs: number; gpuMs: number; drawCalls: number; activeMeshes: number; fpsEstimate: number }>;
 }
 
@@ -174,13 +176,15 @@ export function installDevTools(game: Game): DevApi {
       sceneI.dispose();
       return result;
     },
-    inspect(yaw = 0, pitch = 0, focus = [0.19, -0.265, 0.55]) {
+    inspect(yaw = 0, pitch = 0, focus = [0.19, -0.265, 0.55], center = false) {
       const pivot = g.viewModelRig.pivot;
       pivot.rotation.set(pitch, yaw, 0);
-      // keep the focus point where it was: position = P - R * P
+      // keep the focus point where it was (or bring it to the screen
+      // centre at the same distance): position = C - R * P
       const rot = Matrix.RotationYawPitchRoll(yaw, pitch, 0);
       const p = new Vector3(focus[0], focus[1], focus[2]);
-      pivot.position.copyFrom(p.subtract(Vector3.TransformCoordinates(p, rot)));
+      const c = center ? new Vector3(0, 0, p.length()) : p;
+      pivot.position.copyFrom(c.subtract(Vector3.TransformCoordinates(p, rot)));
       game.stepFrames(2, 1 / 60);
     },
   };

@@ -12,10 +12,10 @@ import { knurlTexture, mp44MetalTexture, mp44WoodTexture } from "./weaponTexture
 
 // Trigger hand on the wooden pistol grip
 const RIGHT_GRIP: HandPose = {
-  wrist: [0.03, 0.025, -0.232],
-  knuckles: [0, -0.35, 0.94],
+  wrist: [0.035, 0.005, -0.242], // behind and below the grip: the fist closes on the wood, not the mag
+  knuckles: [0, -0.32, 0.95], // metacarpals run forward-down, perpendicular to the raked grip
   palm: [-1, 0, 0],
-  curl: { thumb: 0.6, index: 0.4, middle: 1.0, ring: 1.0, pinky: 1.0 },
+  curl: { thumb: 0.65, index: 0.45, middle: 1.0, ring: 1.0, pinky: 1.0 }, // index reaches into the guard
 };
 
 // Support hand cupping the fore-end from below
