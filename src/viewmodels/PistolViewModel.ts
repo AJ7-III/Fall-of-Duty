@@ -1,6 +1,6 @@
-import { Color3, FresnelParameters, Mesh, MeshBuilder, Texture, Vector3 } from "@babylonjs/core";
+import { Mesh, MeshBuilder, Vector3 } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
-import { makeCanvasTexture, stdMat } from "../rendering/materials/canvas";
+import { flatMat } from "../rendering/materials/canvas";
 import { createLimb, handAnchor, mergeWeaponParts, prim } from "./kit";
 import type { HandPose, WeaponViewModel } from "./kit";
 import { knurlTexture, polymerTexture, stippleTexture } from "./weaponTextures";
@@ -31,47 +31,19 @@ export function buildPistolViewModel(scene: Scene): WeaponViewModel {
   const parent = new Mesh("usp45_root", scene);
 
   // --- Materials ---
-  const polymerMat = stdMat(scene, "uspPolymerMat", { tex: polymerTexture(scene), spec: [0.07, 0.07, 0.08], power: 14 });
+  const polymerMat = flatMat(scene, "uspPolymerMat", { albedo: [1, 1, 1], rough: 0.58, tex: polymerTexture(scene) });
 
-  const stippleMat = stdMat(scene, "uspStippleMat", { tex: stippleTexture(scene), spec: [0.05, 0.05, 0.06], power: 10 });
+  const stippleMat = flatMat(scene, "uspStippleMat", { albedo: [1, 1, 1], rough: 0.75, tex: stippleTexture(scene) });
 
-  // sky-glint reflection shared by the slide and small steel parts
-  const slideReflTex = makeCanvasTexture(scene, "uspReflTex", 256, (ctx, s) => {
-    const grad = ctx.createLinearGradient(0, 0, 0, s);
-    grad.addColorStop(0.0, "#d7e6f3");
-    grad.addColorStop(0.45, "#8fa5ba");
-    grad.addColorStop(0.6, "#ebf4fa");
-    grad.addColorStop(0.68, "#5d7387");
-    grad.addColorStop(1.0, "#252f3a");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, s, s);
-    const sun = ctx.createRadialGradient(s * 0.66, s * 0.24, 2, s * 0.66, s * 0.24, 42);
-    sun.addColorStop(0, "rgba(255,255,248,0.9)");
-    sun.addColorStop(1, "rgba(255,255,248,0)");
-    ctx.fillStyle = sun;
-    ctx.beginPath();
-    ctx.arc(s * 0.66, s * 0.24, 42, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  slideReflTex.coordinatesMode = Texture.SPHERICAL_MODE;
+  // Metals are physically based now: blued slide steel, in-the-white
+  // controls and brass all mirror the yard environment
+  const slideMat = flatMat(scene, "uspSlideMat", { albedo: [0.32, 0.34, 0.4], rough: 0.32, metal: 1 });
+  const steelMat = flatMat(scene, "uspSteelMat", { albedo: [0.55, 0.57, 0.6], rough: 0.28, metal: 1 });
+  const darkTrimMat = flatMat(scene, "uspDarkTrimMat", { albedo: [0.06, 0.06, 0.07], rough: 0.55, metal: 0.8 });
+  const knurlMat = flatMat(scene, "uspKnurlMat", { albedo: [0.7, 0.7, 0.74], rough: 0.4, metal: 1, tex: knurlTexture(scene) });
+  const dotMat = flatMat(scene, "uspSightDotMat", { albedo: [0.85, 0.85, 0.8], rough: 0.6, emissive: [0.5, 0.5, 0.45] }); // 3-dot sights
 
-  const slideMat = stdMat(scene, "uspSlideMat", { diffuse: [0.08, 0.09, 0.11], spec: [0.32, 0.34, 0.4], power: 42 }); // blued slide steel
-  slideMat.reflectionTexture = slideReflTex;
-  slideMat.reflectionFresnelParameters = new FresnelParameters();
-  slideMat.reflectionFresnelParameters.bias = 0.02;
-  slideMat.reflectionFresnelParameters.power = 5;
-  slideMat.reflectionFresnelParameters.leftColor = new Color3(0.4, 0.42, 0.46);
-  slideMat.reflectionFresnelParameters.rightColor = Color3.Black();
-
-  const steelMat = stdMat(scene, "uspSteelMat", { diffuse: [0.13, 0.14, 0.17], spec: [0.45, 0.47, 0.52], power: 56 }); // in-the-white controls
-
-  const darkTrimMat = stdMat(scene, "uspDarkTrimMat", { diffuse: [0.02, 0.02, 0.025], spec: [0.1, 0.1, 0.12], power: 20 });
-
-  const knurlMat = stdMat(scene, "uspKnurlMat", { tex: knurlTexture(scene), spec: [0.35, 0.35, 0.4], power: 48 });
-
-  const dotMat = stdMat(scene, "uspSightDotMat", { diffuse: [0.85, 0.85, 0.8], emissive: [0.38, 0.38, 0.34] }); // 3-dot sights
-
-  const brassMat = stdMat(scene, "uspBrassMat", { diffuse: [0.48, 0.34, 0.12], spec: [0.7, 0.55, 0.25], power: 64 }); // chambered round
+  const brassMat = flatMat(scene, "uspBrassMat", { albedo: [0.85, 0.64, 0.3], rough: 0.3, metal: 1 }); // chambered round
 
   // --- Slide group (pivot on the slide axis so blowback is a pure z slide) ---
   const slideGroup = new Mesh("slideGroup", scene);

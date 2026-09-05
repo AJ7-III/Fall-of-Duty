@@ -1,6 +1,6 @@
-import { Color3, FresnelParameters, Mesh, MeshBuilder, Texture, Vector3 } from "@babylonjs/core";
+import { Mesh, MeshBuilder, Vector3 } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
-import { makeCanvasTexture, stdMat } from "../rendering/materials/canvas";
+import { flatMat } from "../rendering/materials/canvas";
 import { createTaperedLimb, handAnchor, mergeWeaponParts, prim } from "./kit";
 import type { HandPose, WeaponViewModel } from "./kit";
 import { knurlTexture, mp44MetalTexture, mp44WoodTexture } from "./weaponTextures";
@@ -29,80 +29,27 @@ const LEFT_GRIP: HandPose = {
 export function buildMp44ViewModel(scene: Scene): WeaponViewModel {
   const parent = new Mesh("mp44_root", scene);
 
-  // Spherical sky-glint map — the same trick the M40A3 scope and USP slide
-  // use to read as real blued steel instead of flat paint. Tuned moodier
-  // (overcast rain-yard sky, low warm sun) so the wartime metal stays dark
-  // but catches a live rim light as the view turns. This is the single
-  // biggest reason the MP44 used to look flatter than the other two guns.
-  const skyReflTex = makeCanvasTexture(scene, "mp44ReflTex", 256, (ctx, s) => {
-    const grad = ctx.createLinearGradient(0, 0, 0, s);
-    grad.addColorStop(0.0, "#c8d6e4");
-    grad.addColorStop(0.42, "#7c8ea1");
-    grad.addColorStop(0.58, "#dfe9f2"); // bright overcast horizon band
-    grad.addColorStop(0.66, "#515f6e");
-    grad.addColorStop(1.0, "#1b2129");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, s, s);
-    const sun = ctx.createRadialGradient(s * 0.62, s * 0.26, 2, s * 0.62, s * 0.26, 44);
-    sun.addColorStop(0, "rgba(255,247,228,0.85)");
-    sun.addColorStop(1, "rgba(255,247,228,0)");
-    ctx.fillStyle = sun;
-    ctx.beginPath();
-    ctx.arc(s * 0.62, s * 0.26, 44, 0, Math.PI * 2);
-    ctx.fill();
+  // Physically based metals and wood: the phosphate receiver and barrel,
+  // the bare steel of the worn edges and the laminated furniture all take
+  // their reflections from the yard environment
+  // (the painted phosphate is dark, so the albedo multiplier lifts it back
+  // to a gunmetal that still catches the sky)
+  const metalMat = flatMat(scene, "mp44MetalMat", {
+    albedo: [2.0, 2.02, 2.06],
+    rough: 0.46,
+    metal: 0.55,
+    tex: mp44MetalTexture(scene),
   });
-  skyReflTex.coordinatesMode = Texture.SPHERICAL_MODE;
+  const darkMat = flatMat(scene, "mp44DarkMat", { albedo: [0.16, 0.17, 0.18], rough: 0.5, metal: 0.6 });
+  const edgeMat = flatMat(scene, "mp44WornEdgeMat", { albedo: [0.62, 0.64, 0.66], rough: 0.24, metal: 1 });
+  const woodMat = flatMat(scene, "mp44WoodMat", { albedo: [1.35, 1.22, 1.08], rough: 0.42, tex: mp44WoodTexture(scene) });
+  const knurlMat = flatMat(scene, "mp44KnurlMat", { albedo: [0.7, 0.7, 0.74], rough: 0.4, metal: 1, tex: knurlTexture(scene) });
 
-  const metalMat = stdMat(scene, "mp44MetalMat", { tex: mp44MetalTexture(scene), spec: [0.4, 0.42, 0.45], power: 52 });
-  // grazing-angle sheen on the stamped receiver/barrel — dark face-on, bright
-  // at the silhouette edge where the blueing catches the sky
-  metalMat.reflectionTexture = skyReflTex;
-  metalMat.reflectionFresnelParameters = new FresnelParameters();
-  metalMat.reflectionFresnelParameters.bias = 0.02;
-  metalMat.reflectionFresnelParameters.power = 5;
-  metalMat.reflectionFresnelParameters.leftColor = new Color3(0.34, 0.37, 0.41);
-  metalMat.reflectionFresnelParameters.rightColor = Color3.Black();
+  const sightDotMat = flatMat(scene, "mp44SightDotMat", { albedo: [0.72, 0.72, 0.66], rough: 0.6, emissive: [0.32, 0.32, 0.26] });
 
-  const darkMat = stdMat(scene, "mp44DarkMat", { diffuse: [0.018, 0.02, 0.022], spec: [0.14, 0.15, 0.16], power: 28 });
-  darkMat.reflectionTexture = skyReflTex;
-  darkMat.reflectionFresnelParameters = new FresnelParameters();
-  darkMat.reflectionFresnelParameters.bias = 0.01;
-  darkMat.reflectionFresnelParameters.power = 6;
-  darkMat.reflectionFresnelParameters.leftColor = new Color3(0.16, 0.18, 0.21);
-  darkMat.reflectionFresnelParameters.rightColor = Color3.Black();
+  const brassMat = flatMat(scene, "mp44BrassMat", { albedo: [0.85, 0.64, 0.3], rough: 0.3, metal: 1 });
 
-  // worn high spots / in-the-white edges — polished steel, strongest catch
-  const edgeMat = stdMat(scene, "mp44WornEdgeMat", { diffuse: [0.46, 0.48, 0.48], spec: [0.72, 0.74, 0.78], power: 92 });
-  edgeMat.reflectionTexture = skyReflTex;
-  edgeMat.reflectionFresnelParameters = new FresnelParameters();
-  edgeMat.reflectionFresnelParameters.bias = 0.12;
-  edgeMat.reflectionFresnelParameters.power = 2.4;
-  edgeMat.reflectionFresnelParameters.leftColor = new Color3(0.62, 0.65, 0.68);
-  edgeMat.reflectionFresnelParameters.rightColor = new Color3(0.12, 0.13, 0.15);
-
-  const woodMat = stdMat(scene, "mp44WoodMat", { tex: mp44WoodTexture(scene), spec: [0.16, 0.11, 0.06], power: 18 });
-  // faint waxed sheen on the laminated furniture
-  woodMat.reflectionTexture = skyReflTex;
-  woodMat.reflectionFresnelParameters = new FresnelParameters();
-  woodMat.reflectionFresnelParameters.bias = 0.03;
-  woodMat.reflectionFresnelParameters.power = 7;
-  woodMat.reflectionFresnelParameters.leftColor = new Color3(0.16, 0.12, 0.08);
-  woodMat.reflectionFresnelParameters.rightColor = Color3.Black();
-
-  // knurled control surfaces (charging knob, selector, muzzle nut)
-  const knurlMat = stdMat(scene, "mp44KnurlMat", { tex: knurlTexture(scene), spec: [0.4, 0.4, 0.45], power: 64 });
-
-  const sightDotMat = stdMat(scene, "mp44SightDotMat", { diffuse: [0.72, 0.72, 0.66], emissive: [0.22, 0.22, 0.18] });
-
-  const brassMat = stdMat(scene, "mp44BrassMat", { diffuse: [0.48, 0.35, 0.14], spec: [0.7, 0.56, 0.26], power: 62 });
-  brassMat.reflectionTexture = skyReflTex;
-  brassMat.reflectionFresnelParameters = new FresnelParameters();
-  brassMat.reflectionFresnelParameters.bias = 0.1;
-  brassMat.reflectionFresnelParameters.power = 2.6;
-  brassMat.reflectionFresnelParameters.leftColor = new Color3(0.55, 0.43, 0.16);
-  brassMat.reflectionFresnelParameters.rightColor = Color3.Black();
-
-  const rubberMat = stdMat(scene, "mp44RubberMat", { diffuse: [0.055, 0.055, 0.06], spec: [0.03, 0.03, 0.03], power: 10 });
+  const rubberMat = flatMat(scene, "mp44RubberMat", { albedo: [0.055, 0.055, 0.06], rough: 0.9 });
 
   // --- Receiver and barrel assembly ---
   prim(

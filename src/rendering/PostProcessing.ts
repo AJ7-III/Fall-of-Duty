@@ -1,4 +1,4 @@
-import { DefaultRenderingPipeline, ImageProcessingConfiguration, SSAO2RenderingPipeline } from "@babylonjs/core";
+import { ColorCurves, DefaultRenderingPipeline, ImageProcessingConfiguration, SSAO2RenderingPipeline } from "@babylonjs/core";
 import type { Camera, Engine, Scene } from "@babylonjs/core";
 import { Settings } from "../ui/Settings";
 import type { GraphicsQuality } from "../ui/Settings";
@@ -58,6 +58,21 @@ export class PostProcessing {
     p.imageProcessing.vignetteEnabled = true;
     p.imageProcessing.vignetteWeight = 1.25;
     p.imageProcessing.vignetteStretch = 0.3;
+    // Grade: cool, slightly desaturated shadows and a warm lift in the
+    // highlights — the split tone of an overcast day under sodium lamps
+    const curves = new ColorCurves();
+    curves.globalSaturation = -6;
+    curves.shadowsHue = 215;
+    curves.shadowsSaturation = 12;
+    curves.shadowsDensity = 35;
+    curves.midtonesHue = 200;
+    curves.midtonesSaturation = 4;
+    curves.midtonesDensity = 15;
+    curves.highlightsHue = 40;
+    curves.highlightsSaturation = 10;
+    curves.highlightsDensity = 30;
+    p.imageProcessing.colorCurvesEnabled = true;
+    p.imageProcessing.colorCurves = curves;
     p.bloomEnabled = true;
     p.bloomThreshold = 0.86;
     p.bloomWeight = 0.14;

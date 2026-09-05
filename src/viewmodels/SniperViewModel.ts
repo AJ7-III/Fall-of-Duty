@@ -1,6 +1,6 @@
 import { Color3, FresnelParameters, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3 } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
-import { makeCanvasTexture, stdMat } from "../rendering/materials/canvas";
+import { flatMat, makeCanvasTexture, stdMat } from "../rendering/materials/canvas";
 import { createLimb, createTaperedLimb, handAnchor, mergeWeaponParts, prim } from "./kit";
 import type { HandPose, WeaponViewModel } from "./kit";
 import { camoTexture, knurlTexture } from "./weaponTextures";
@@ -41,9 +41,11 @@ export function buildSniperViewModel(scene: Scene): WeaponViewModel {
   const parent = new Mesh("m40a3_root", scene);
 
   // --- Materials ---
-  const stockMat = stdMat(scene, "sniperStockMat", { tex: camoTexture(scene), spec: [0.08, 0.08, 0.07], power: 12 });
+  const stockMat = flatMat(scene, "sniperStockMat", { albedo: [1, 1, 1], rough: 0.55, tex: camoTexture(scene) });
 
-  const metalMat = stdMat(scene, "sniperMetalMat", { diffuse: [0.09, 0.1, 0.13], spec: [0.35, 0.38, 0.45], power: 48 }); // blued steel
+  // blued steel and anodised scope tube: physically based metals that mirror
+  // the yard environment; the lenses keep their coated-glass Fresnel look
+  const metalMat = flatMat(scene, "sniperMetalMat", { albedo: [0.3, 0.32, 0.38], rough: 0.3, metal: 1 });
 
   // Reflection map for the lens glass and metal sheen — sky gradient with a
   // hot sun glint, sampled in spherical mode so it slides across the curved
@@ -67,22 +69,15 @@ export function buildSniperViewModel(scene: Scene): WeaponViewModel {
   });
   lensReflTex.coordinatesMode = Texture.SPHERICAL_MODE;
 
-  const scopeMat = stdMat(scene, "sniperScopeMat", { diffuse: [0.05, 0.05, 0.06], spec: [0.25, 0.25, 0.28], power: 32 }); // matte black
-  // grazing-angle sky sheen — the anodized tube catches rim light
-  scopeMat.reflectionTexture = lensReflTex;
-  scopeMat.reflectionFresnelParameters = new FresnelParameters();
-  scopeMat.reflectionFresnelParameters.bias = 0.02;
-  scopeMat.reflectionFresnelParameters.power = 5;
-  scopeMat.reflectionFresnelParameters.leftColor = new Color3(0.42, 0.44, 0.48);
-  scopeMat.reflectionFresnelParameters.rightColor = Color3.Black();
+  const scopeMat = flatMat(scene, "sniperScopeMat", { albedo: [0.1, 0.1, 0.11], rough: 0.45, metal: 0.9 });
 
-  const knurlMat = stdMat(scene, "sniperKnurlMat", { tex: knurlTexture(scene), spec: [0.4, 0.4, 0.45], power: 64 });
+  const knurlMat = flatMat(scene, "sniperKnurlMat", { albedo: [0.7, 0.7, 0.74], rough: 0.4, metal: 1, tex: knurlTexture(scene) });
 
-  const darkTrimMat = stdMat(scene, "sniperDarkTrimMat", { diffuse: [0.02, 0.02, 0.025], spec: [0.12, 0.12, 0.14], power: 24 });
+  const darkTrimMat = flatMat(scene, "sniperDarkTrimMat", { albedo: [0.06, 0.06, 0.07], rough: 0.55, metal: 0.8 });
 
-  const markMat = stdMat(scene, "sniperMarkMat", { diffuse: [0.8, 0.8, 0.75], emissive: [0.3, 0.3, 0.27] }); // turret witness dots
+  const markMat = flatMat(scene, "sniperMarkMat", { albedo: [0.8, 0.8, 0.75], rough: 0.6, emissive: [0.4, 0.4, 0.36] }); // turret witness dots
 
-  const rubberMat = stdMat(scene, "sniperRubberMat", { diffuse: [0.055, 0.055, 0.06], spec: [0.03, 0.03, 0.03], power: 10 }); // recoil pad / eyecup
+  const rubberMat = flatMat(scene, "sniperRubberMat", { albedo: [0.055, 0.055, 0.06], rough: 0.9 }); // recoil pad / eyecup
 
   const lensMat = new StandardMaterial("sniperLensMat", scene);
   lensMat.diffuseColor = new Color3(0.01, 0.015, 0.02);

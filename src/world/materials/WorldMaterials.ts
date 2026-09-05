@@ -1,6 +1,6 @@
 import { Color3, DynamicTexture, StandardMaterial } from "@babylonjs/core";
-import type { Scene } from "@babylonjs/core";
-import { canvasMat, makeCanvasTexture, paintNoise, stdMat } from "../../rendering/materials/canvas";
+import type { PBRMaterial, Scene } from "@babylonjs/core";
+import { canvasMat, flatMat, makeCanvasTexture, paintNoise } from "../../rendering/materials/canvas";
 
 // Every surface of the Ship Box yard, painted procedurally at load time.
 // Materials are cached by name on the scene, so the map, the wrecks and the
@@ -18,12 +18,12 @@ export class WorldMaterials {
   }
 
   // Weathered poured concrete with pocks, chips, grime streaks and cracks
-  public createConcreteMaterial(uScale: number = 4, vScale: number = 4): StandardMaterial {
+  public createConcreteMaterial(uScale: number = 4, vScale: number = 4): PBRMaterial {
     return canvasMat(
       this.scene,
       `concreteMat_${uScale}_${vScale}`,
       512,
-      { spec: [0.04, 0.04, 0.04], power: 8, bump: 1.4, u: uScale, v: vScale },
+      { rough: 0.86, wet: 0.45, roughVar: 0.3, bump: 1.4, u: uScale, v: vScale },
       (ctx, s) => {
         ctx.fillStyle = "#97948c";
         ctx.fillRect(0, 0, s, s);
@@ -66,8 +66,8 @@ export class WorldMaterials {
   }
 
   // Industrial painted-steel panels with seams, rivets, scratches and rust
-  public createMetalMaterial(): StandardMaterial {
-    return canvasMat(this.scene, "metalPanelMat", 512, { spec: [0.22, 0.24, 0.27], power: 28, bump: 1.6 }, (ctx, s) => {
+  public createMetalMaterial(): PBRMaterial {
+    return canvasMat(this.scene, "metalPanelMat", 512, { rough: 0.5, metal: 0.55, wet: 0.55, bump: 1.6 }, (ctx, s) => {
       ctx.fillStyle = "#3d434b";
       ctx.fillRect(0, 0, s, s);
       paintNoise(ctx, s, ["#363c44", "#434a53", "#3a4049"], 200, 10, 50, 0.5);
@@ -188,55 +188,182 @@ export class WorldMaterials {
   // Printed paper bullseye for the target boards. Each call returns a fresh
   // material whose texture is a private copy of the shared artwork, so the
   // bullet holes painted into one board never show up on the others.
-  public createTargetBoardMaterial(): StandardMaterial {
+  public createTargetBoardMaterial(): PBRMaterial {
     const id = this.targetBoardCount++;
     const tex = new DynamicTexture(`targetBoardTex_${id}`, { width: 256, height: 256 }, this.scene, true);
     const ctx = tex.getContext() as CanvasRenderingContext2D;
     ctx.drawImage(this.getTargetBoardBase(), 0, 0);
     tex.update();
 
-    const mat = stdMat(this.scene, `targetBoardMat_${id}`, { tex: tex, spec: [0.03, 0.03, 0.03] });
+    const mat = flatMat(this.scene, `targetBoardMat_${id}`, { albedo: [1, 1, 1], rough: 0.85, tex });
     return mat;
   }
 
-  // Painted corrugated shipping-container steel, tinted per container
-  public createContainerMaterial(key: string, base: string, shade: string): StandardMaterial {
-    return canvasMat(this.scene, `containerMat_${key}`, 512, { spec: [0.15, 0.16, 0.17], power: 24, bump: 2.4 }, (ctx, s) => {
-      ctx.fillStyle = base;
-      ctx.fillRect(0, 0, s, s);
+  // Corrugation profile shared by the container albedo and its height map:
+  // 1024 px across a 12.2 m side works out to ~40 ribs, each a trapezoid
+  // with a flat crown and sloped flanks like the real pressing
+  private static readonly RIB = 26;
 
-      // vertical corrugation ribs
-      for (let x = 0; x < s; x += 24) {
-        const g = ctx.createLinearGradient(x, 0, x + 24, 0);
-        g.addColorStop(0, "rgba(0,0,0,0.28)");
-        g.addColorStop(0.35, "rgba(255,255,255,0.10)");
-        g.addColorStop(0.6, "rgba(0,0,0,0.05)");
-        g.addColorStop(1, "rgba(0,0,0,0.30)");
-        ctx.fillStyle = g;
-        ctx.fillRect(x, 0, 24, s);
+  private static ribProfile(x: number): number {
+    const t = (x % WorldMaterials.RIB) / WorldMaterials.RIB;
+    if (t < 0.12) return t / 0.12; // rising flank
+    if (t < 0.5) return 1; // crown
+    if (t < 0.62) return 1 - (t - 0.5) / 0.12; // falling flank
+    return 0; // valley
+  }
+
+  // Dedicated height field: ribs, the recessed frame rails, weld seams and
+  // the corner castings — clean relief instead of luminance guesswork
+  private static paintContainerHeight(ctx: CanvasRenderingContext2D, s: number): void {
+    const img = ctx.createImageData(s, s);
+    const d = img.data;
+    for (let y = 0; y < s; y++) {
+      const rail = y < 22 || y > s - 22 ? 0.35 : 1; // top/bottom rails sit back
+      for (let x = 0; x < s; x++) {
+        const v = (0.35 + 0.65 * WorldMaterials.ribProfile(x)) * rail;
+        const i = (y * s + x) * 4;
+        const c = v * 255;
+        d[i] = c;
+        d[i + 1] = c;
+        d[i + 2] = c;
+        d[i + 3] = 255;
       }
+    }
+    ctx.putImageData(img, 0, 0);
+    // vertical weld seams every quarter panel, and the corner castings
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    for (const x of [s * 0.25, s * 0.5, s * 0.75]) ctx.fillRect(x - 1.5, 0, 3, s);
+    ctx.fillStyle = "#e8e8e8";
+    for (const [x, y] of [
+      [0, 0],
+      [s - 44, 0],
+      [0, s - 44],
+      [s - 44, s - 44],
+    ]) {
+      ctx.fillRect(x, y, 44, 44);
+    }
+  }
 
-      paintNoise(ctx, s, [shade], 90, 8, 40, 0.25);
+  // Painted corrugated shipping-container steel, tinted per container:
+  // shaded ribs, a weathered paint job with chips and rust runs, panel
+  // seams, corner castings, and a stencilled owner code and placard
+  public createContainerMaterial(key: string, base: string, shade: string): PBRMaterial {
+    return canvasMat(
+      this.scene,
+      `containerMat_${key}`,
+      1024,
+      { rough: 0.48, metal: 0.3, wet: 0.65, roughVar: 0.2, bump: 2.2, height: WorldMaterials.paintContainerHeight },
+      (ctx, s) => {
+        ctx.fillStyle = base;
+        ctx.fillRect(0, 0, s, s);
 
-      // rust streaks bleeding down from the top rail
-      for (let i = 0; i < 10; i++) {
-        ctx.globalAlpha = 0.1 + Math.random() * 0.15;
-        ctx.fillStyle = "#6b4226";
-        ctx.fillRect(Math.random() * s, Math.random() * s * 0.3, 3 + Math.random() * 9, 40 + Math.random() * 140);
+        // rib shading — light catches the crowns and the rising flanks
+        const rib = WorldMaterials.RIB;
+        for (let x = 0; x < s; x += rib) {
+          const g = ctx.createLinearGradient(x, 0, x + rib, 0);
+          g.addColorStop(0, "rgba(0,0,0,0.3)");
+          g.addColorStop(0.12, "rgba(255,255,255,0.12)");
+          g.addColorStop(0.5, "rgba(255,255,255,0.04)");
+          g.addColorStop(0.62, "rgba(0,0,0,0.22)");
+          g.addColorStop(1, "rgba(0,0,0,0.32)");
+          ctx.fillStyle = g;
+          ctx.fillRect(x, 0, rib, s);
+        }
+
+        // sun-faded and re-painted patches, general grime
+        paintNoise(ctx, s, [shade], 160, 14, 70, 0.22);
+        paintNoise(ctx, s, ["rgba(255,255,255,1)"], 40, 20, 90, 0.05);
+        paintNoise(ctx, s, ["#2a2622", "#1e1c19"], 260, 1, 3, 0.35); // paint chips
+
+        // rust: runs bleeding down from the top rail and the seams, blooms
+        // low where water sits
+        const rustRun = (x: number, y: number, w: number, len: number, a: number): void => {
+          const g = ctx.createLinearGradient(0, y, 0, y + len);
+          g.addColorStop(0, `rgba(122,68,34,${a})`);
+          g.addColorStop(0.5, `rgba(96,52,26,${a * 0.6})`);
+          g.addColorStop(1, "rgba(96,52,26,0)");
+          ctx.fillStyle = g;
+          ctx.fillRect(x, y, w, len);
+        };
+        for (let i = 0; i < 18; i++)
+          rustRun(
+            Math.random() * s,
+            18 + Math.random() * 30,
+            2 + Math.random() * 8,
+            60 + Math.random() * 280,
+            0.35 + Math.random() * 0.3
+          );
+        for (const x of [s * 0.25, s * 0.5, s * 0.75]) {
+          for (let i = 0; i < 4; i++)
+            rustRun(x - 4 + Math.random() * 6, Math.random() * s * 0.6, 3 + Math.random() * 5, 80 + Math.random() * 200, 0.3);
+        }
+        paintNoise(ctx, s, ["#6b3f22", "#7d4a28", "#53301a"], 90, 3, 12, 0.35);
+        ctx.globalAlpha = 0.28;
+        for (let i = 0; i < 12; i++) {
+          const g = ctx.createRadialGradient(Math.random() * s, s - 40 - Math.random() * 120, 2, s * 0.5, s - 60, 160);
+          g.addColorStop(0, "rgba(110,60,30,0.6)");
+          g.addColorStop(1, "rgba(110,60,30,0)");
+          ctx.fillStyle = g;
+          ctx.fillRect(0, s - 220, s, 220);
+        }
+        ctx.globalAlpha = 1;
+
+        // vertical weld seams between the pressed panels
+        for (const x of [s * 0.25, s * 0.5, s * 0.75]) {
+          ctx.fillStyle = "rgba(0,0,0,0.35)";
+          ctx.fillRect(x - 2, 0, 4, s);
+          ctx.fillStyle = "rgba(255,255,255,0.08)";
+          ctx.fillRect(x + 2, 0, 1.5, s);
+        }
+
+        // owner code and serial, stencilled high on the panel, and a
+        // placard low — the marks every box in a yard carries
+        const codes = ["MRDN", "TQLU", "HGSU", "BSLU", "CRXU", "PKGU"];
+        const code = codes[(key.length * 7 + key.charCodeAt(0)) % codes.length];
+        const serial = `${((key.charCodeAt(0) * 31) % 900) + 100} ${((key.length * 173) % 900) + 100} ${key.charCodeAt(key.length - 1) % 10}`;
+        ctx.fillStyle = "rgba(240,240,236,0.82)";
+        ctx.font = `700 ${Math.round(s * 0.052)}px "Arial Narrow", Arial, sans-serif`;
+        ctx.textBaseline = "top";
+        ctx.fillText(code, s * 0.06, s * 0.08);
+        ctx.fillText(serial, s * 0.06, s * 0.14);
+        ctx.font = `700 ${Math.round(s * 0.028)}px Arial, sans-serif`;
+        ctx.fillText("22G1", s * 0.06, s * 0.2);
+        ctx.fillText("MAX GROSS 30 480 KG · TARE 2 250 KG", s * 0.06, s * 0.86);
+        // placard frame
+        ctx.strokeStyle = "rgba(240,240,236,0.5)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(s * 0.72, s * 0.76, s * 0.2, s * 0.14);
+        ctx.fillStyle = "rgba(240,240,236,0.6)";
+        ctx.font = `700 ${Math.round(s * 0.024)}px Arial, sans-serif`;
+        ctx.fillText("CSC SAFETY", s * 0.735, s * 0.775);
+        ctx.fillText("APPROVAL", s * 0.735, s * 0.805);
+        ctx.fillText("GB/L/1874/03", s * 0.735, s * 0.845);
+        // grime over the lettering so it reads as old paint, not a decal
+        paintNoise(ctx, s, [shade], 40, 10, 40, 0.18);
+
+        // top/bottom frame rails and corner castings
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(0, 0, s, 22);
+        ctx.fillRect(0, s - 22, s, 22);
+        ctx.fillStyle = "#3a3a3c";
+        for (const [x, y] of [
+          [0, 0],
+          [s - 44, 0],
+          [0, s - 44],
+          [s - 44, s - 44],
+        ]) {
+          ctx.fillRect(x, y, 44, 44);
+          ctx.fillStyle = "#1c1c1e";
+          ctx.fillRect(x + 12, y + 12, 20, 20); // the casting's oval hole
+          ctx.fillStyle = "#3a3a3c";
+        }
       }
-
-      // top/bottom frame rails
-      ctx.globalAlpha = 0.7;
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      ctx.fillRect(0, 0, s, 14);
-      ctx.fillRect(0, s - 14, s, 14);
-      ctx.globalAlpha = 1;
-    });
+    );
   }
 
   // Rough plank wood for crates and tower steps
-  public createWoodCrateMaterial(): StandardMaterial {
-    return canvasMat(this.scene, "woodCrateMat", 256, { spec: [0.04, 0.04, 0.03], power: 10, bump: 1.6 }, (ctx, s) => {
+  public createWoodCrateMaterial(): PBRMaterial {
+    return canvasMat(this.scene, "woodCrateMat", 512, { rough: 0.8, wet: 0.3, bump: 1.6 }, (ctx, s) => {
       ctx.fillStyle = "#8f6f48";
       ctx.fillRect(0, 0, s, s);
 
@@ -266,12 +393,12 @@ export class WorldMaterials {
     });
   }
 
-  public createGrassMaterial(uScale: number = 10, vScale: number = 10): StandardMaterial {
+  public createGrassMaterial(uScale: number = 10, vScale: number = 10): PBRMaterial {
     return canvasMat(
       this.scene,
       `grassMat_${uScale}_${vScale}`,
       512,
-      { spec: [0.08, 0.09, 0.08], power: 22, bump: 0.7, u: uScale, v: vScale },
+      { rough: 0.78, wet: 0.85, roughVar: 0.2, bump: 0.7, u: uScale, v: vScale },
       (ctx, s) => {
         // wet sheen
         ctx.fillStyle = "#42523a";
@@ -302,12 +429,12 @@ export class WorldMaterials {
 
   // Wet flagstone pavers for the walkways: jittered cobbles with domed
   // shading over dark mortar, moss creeping into the gaps
-  public createStoneWalkwayMaterial(uScale: number = 2, vScale: number = 2): StandardMaterial {
+  public createStoneWalkwayMaterial(uScale: number = 2, vScale: number = 2): PBRMaterial {
     return canvasMat(
       this.scene,
       `stoneWalkMat_${uScale}_${vScale}`,
       512,
-      { spec: [0.13, 0.14, 0.15], power: 34, bump: 2.6, u: uScale, v: vScale },
+      { rough: 0.55, wet: 0.8, roughVar: 0.3, bump: 2.6, u: uScale, v: vScale },
       (ctx, s) => {
         // rain-slick stone
         ctx.fillStyle = "#3b3a37"; // wet mortar
@@ -365,12 +492,14 @@ export class WorldMaterials {
   private getGrassBladeLayout(s: number) {
     if (!this.grassBladeLayout) {
       this.grassBladeLayout = [];
-      for (let i = 0; i < 11; i++) {
+      // a bunch of thin blades: a few tall ones, more short ones behind
+      for (let i = 0; i < 17; i++) {
+        const tall = Math.random() < 0.45;
         this.grassBladeLayout.push({
-          baseX: s * 0.06 + (s * 0.88 * i) / 10 + (Math.random() - 0.5) * 12,
-          baseW: 8 + Math.random() * 7,
-          tipX: (Math.random() - 0.5) * 70,
-          tipY: s * (0.02 + Math.random() * 0.3),
+          baseX: s * 0.05 + (s * 0.9 * i) / 16 + (Math.random() - 0.5) * (s * 0.05),
+          baseW: s * (0.02 + Math.random() * 0.02),
+          tipX: (Math.random() - 0.5) * s * 0.3,
+          tipY: s * (tall ? 0.02 + Math.random() * 0.2 : 0.35 + Math.random() * 0.3),
           tone: (Math.random() * 4) | 0,
         });
       }
@@ -379,20 +508,23 @@ export class WorldMaterials {
   }
 
   private paintGrassBlades(ctx: CanvasRenderingContext2D, s: number, colored: boolean): void {
-    const tones: Array<[string, string]> = [
-      ["#43543a", "#7d8e64"],
-      ["#4a5c40", "#87986e"],
-      ["#3e4f36", "#71825a"],
-      ["#52644a", "#93a378"],
+    // dark, shaded base rising to a lighter, slightly yellowed tip — the
+    // way a wet meadow reads with the light behind the deck
+    const tones: Array<[string, string, string]> = [
+      ["#1f2b1a", "#3d4f32", "#6b7d4e"],
+      ["#22301d", "#455739", "#748558"],
+      ["#1c2718", "#394a2f", "#647748"],
+      ["#26331f", "#4a5c3d", "#7b8b5c"],
     ];
     for (const blade of this.getGrassBladeLayout(s)) {
       const tipX = blade.baseX + blade.tipX;
       const ctrlX = blade.baseX + (tipX - blade.baseX) * 0.25;
       const ctrlY = s * 0.55;
       if (colored) {
-        const [lo, hi] = tones[blade.tone];
+        const [lo, mid, hi] = tones[blade.tone];
         const g = ctx.createLinearGradient(0, s, 0, blade.tipY);
         g.addColorStop(0, lo);
+        g.addColorStop(0.55, mid);
         g.addColorStop(1, hi);
         ctx.fillStyle = g;
       } else {
@@ -411,10 +543,21 @@ export class WorldMaterials {
     const cached = this.scene.getTextureByName("grassBladeTex");
     if (cached) return cached as DynamicTexture;
 
-    return makeCanvasTexture(this.scene, "grassBladeTex", 256, (ctx, s) => {
-      ctx.fillStyle = "#42523a"; // opaque grass bed behind the blades
+    return makeCanvasTexture(this.scene, "grassBladeTex", 512, (ctx, s) => {
+      ctx.fillStyle = "#2a3824"; // opaque grass bed behind the blades (bleeds at the cutout edge)
       ctx.fillRect(0, 0, s, s);
       this.paintGrassBlades(ctx, s, true);
+      // a central vein highlight down each blade sells the fold
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = "#9aab74";
+      ctx.lineWidth = 1.2;
+      for (const blade of this.getGrassBladeLayout(s)) {
+        ctx.beginPath();
+        ctx.moveTo(blade.baseX, s);
+        ctx.quadraticCurveTo(blade.baseX + blade.tipX * 0.25, s * 0.55, blade.baseX + blade.tipX, blade.tipY + 12);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     });
   }
 
@@ -422,7 +565,7 @@ export class WorldMaterials {
     const cached = this.scene.getTextureByName("grassBladeMaskTex");
     if (cached) return cached as DynamicTexture;
 
-    return makeCanvasTexture(this.scene, "grassBladeMaskTex", 256, (ctx, s) => {
+    return makeCanvasTexture(this.scene, "grassBladeMaskTex", 512, (ctx, s) => {
       ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, s, s);
       this.paintGrassBlades(ctx, s, false);
@@ -448,8 +591,8 @@ export class WorldMaterials {
     return tex;
   }
 
-  public createContainerDoorMaterial(key: string, base: string, shade: string): StandardMaterial {
-    return canvasMat(this.scene, `containerDoorMat_${key}`, 256, { spec: [0.15, 0.16, 0.17], power: 24, bump: 2.0 }, (ctx, s) => {
+  public createContainerDoorMaterial(key: string, base: string, shade: string): PBRMaterial {
+    return canvasMat(this.scene, `containerDoorMat_${key}`, 512, { rough: 0.5, metal: 0.3, wet: 0.65, bump: 2.0 }, (ctx, s) => {
       ctx.fillStyle = shade;
       ctx.fillRect(0, 0, s, s);
 
@@ -514,8 +657,8 @@ export class WorldMaterials {
   }
 
   // Industrial window band for the out-of-bounds warehouse facades
-  public createWindowBandMaterial(): StandardMaterial {
-    return canvasMat(this.scene, "windowBandMat", 256, { spec: [0.25, 0.27, 0.3], power: 48, u: 8, v: 1 }, (ctx, s) => {
+  public createWindowBandMaterial(): PBRMaterial {
+    return canvasMat(this.scene, "windowBandMat", 256, { rough: 0.3, metal: 0.2, u: 8, v: 1 }, (ctx, s) => {
       ctx.fillStyle = "#252b31";
       ctx.fillRect(0, 0, s, s);
       // panes with a faint sky-reflection gradient, some broken/dark
@@ -539,8 +682,8 @@ export class WorldMaterials {
 
   // Weathered factory paint for the abandoned car: faded petrol blue with
   // door seams, chipped edges, rust freckles and rain-streak grime
-  public createCarBodyMaterial(): StandardMaterial {
-    return canvasMat(this.scene, "carBodyMat", 256, { spec: [0.28, 0.3, 0.33], power: 52, bump: 0.9 }, (ctx, s) => {
+  public createCarBodyMaterial(): PBRMaterial {
+    return canvasMat(this.scene, "carBodyMat", 512, { rough: 0.32, metal: 0.55, wet: 0.5, bump: 0.9 }, (ctx, s) => {
       // wet clear-coat glint
       ctx.fillStyle = "#3f5560";
       ctx.fillRect(0, 0, s, s);
@@ -648,12 +791,12 @@ export class WorldMaterials {
     return mat;
   }
 
-  public createGraffitiWallMaterial(uScale: number = 6, vScale: number = 1): StandardMaterial {
+  public createGraffitiWallMaterial(uScale: number = 6, vScale: number = 1): PBRMaterial {
     return canvasMat(
       this.scene,
       `graffitiWallMat_${uScale}_${vScale}`,
       1024,
-      { spec: [0.03, 0.03, 0.03], power: 8, bump: 0.8, u: uScale, v: vScale },
+      { rough: 0.88, wet: 0.35, bump: 0.8, u: uScale, v: vScale },
       (ctx, s) => {
         // -- Concrete base --
         ctx.fillStyle = "#8c8a84";
@@ -972,10 +1115,10 @@ export class WorldMaterials {
   // Hoarding posters — original artwork painted here (no photos, nothing to
   // license): a freight-line advert and a dockside radio poster, weathered
   // in place so the print reads as pasted up years ago, not bolted in fresh.
-  public createBillboardMuralMaterial(id: 1 | 2): StandardMaterial {
+  public createBillboardMuralMaterial(id: 1 | 2): PBRMaterial {
     const name = `billboardMuralMat_${id}`;
     const cached = this.scene.getMaterialByName(name);
-    if (cached) return cached as StandardMaterial;
+    if (cached) return cached as PBRMaterial;
 
     const w = id === 1 ? 768 : 452;
     const h = id === 1 ? 1024 : 768;
@@ -988,16 +1131,8 @@ export class WorldMaterials {
     WorldMaterials.weatherPoster(ctx, w, h);
     tex.update();
 
-    const mat = new StandardMaterial(name, this.scene);
-    mat.diffuseTexture = tex;
-    // The print sits back in the overcast scene instead of outshining it;
-    // the tiny emissive lift only keeps it legible at distance
-    mat.diffuseColor = new Color3(0.55, 0.56, 0.58);
-    mat.emissiveTexture = tex;
-    mat.emissiveColor = new Color3(0.05, 0.05, 0.052);
-    mat.specularColor = new Color3(0.04, 0.04, 0.04);
-    mat.specularPower = 8;
-    return mat;
+    // Pasted paper: matte, a little sheen where the rain has hit it
+    return flatMat(this.scene, name, { albedo: [0.7, 0.71, 0.73], rough: 0.78, tex });
   }
 
   // "MERIDIAN FREIGHT" — a container-line advert: bold diagonal stripe, a

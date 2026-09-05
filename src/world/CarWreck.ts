@@ -1,5 +1,5 @@
 import { MeshBuilder, Color3, Vector3, TransformNode } from "@babylonjs/core";
-import type { AbstractMesh, PickingInfo, Scene, Mesh, StandardMaterial, ParticleSystem } from "@babylonjs/core";
+import type { AbstractMesh, PickingInfo, Scene, Mesh, Material, ParticleSystem } from "@babylonjs/core";
 import type { WorldMaterials } from "./materials/WorldMaterials";
 import type { Effects } from "../rendering/Effects";
 import type { GlassPane } from "./wreckShared";
@@ -29,7 +29,7 @@ export class CarWreck {
     materials: WorldMaterials,
     position: Vector3,
     yaw: number,
-    registerStatic: (mat: StandardMaterial, mesh: Mesh) => void
+    registerStatic: (mat: Material, mesh: Mesh) => void
   ) {
     this.scene = scene;
 

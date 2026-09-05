@@ -1,5 +1,5 @@
 import { Mesh, MeshBuilder, Quaternion, TransformNode, Vector3 } from "@babylonjs/core";
-import type { DynamicTexture, Scene, StandardMaterial } from "@babylonjs/core";
+import type { DynamicTexture, Material, Scene } from "@babylonjs/core";
 import { frameQuat } from "../anim/boneMath";
 
 // Shared building blocks for the procedural first-person weapons: primitive
@@ -57,7 +57,7 @@ export function poseFrame(pose: HandPose, out: Quaternion): Quaternion {
 // The workhorse for the weapons' hundreds of hand-tuned parts.
 export function prim(
   mesh: Mesh,
-  mat: StandardMaterial | null,
+  mat: Material | null,
   parent: Mesh,
   pos: Vector3 | Vec3Tuple | null,
   o?: {
@@ -143,7 +143,7 @@ export function createTaperedLimb(
   name: string,
   scene: Scene,
   parent: Mesh,
-  mat: StandardMaterial,
+  mat: Material,
   from: Vector3,
   to: Vector3,
   rFrom: number,

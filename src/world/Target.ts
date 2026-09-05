@@ -33,7 +33,7 @@ export class Target {
     const board = MeshBuilder.CreateBox("target_board", { width: 0.8, height: 1.0, depth: 0.03 }, scene);
     const boardMat = materials.createTargetBoardMaterial();
     board.material = boardMat;
-    this.boardTex = boardMat.diffuseTexture as DynamicTexture;
+    this.boardTex = boardMat.albedoTexture as DynamicTexture;
     board.position.set(0, 0.4, 0);
     board.parent = this.mesh;
 

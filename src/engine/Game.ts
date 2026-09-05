@@ -3,6 +3,8 @@ import { Time } from "./Time";
 import { Input } from "./Input";
 import { WorldMaterials } from "../world/materials/WorldMaterials";
 import { PostProcessing } from "../rendering/PostProcessing";
+import { resetDynamicShadowCasters } from "../rendering/dynamicShadows";
+import { resetEnvironmentCache } from "../rendering/materials/environment";
 import { CameraRig } from "../player/CameraRig";
 import { PlayerController } from "../player/PlayerController";
 import { DeathCam } from "../player/DeathCam";
@@ -149,8 +151,10 @@ export class Game {
     this.postfx = new PostProcessing(this.engine, this.scene, this.cameraRig.camera);
     this.postfx.setOnQualityChange((quality, auto) => {
       this.matchUI.renderGraphics(quality);
+      this.map.setDynamicShadows(quality === "high");
       if (auto) this.matchUI.toast(`FRAME RATE LOW — GRAPHICS SET TO ${quality.toUpperCase()}`);
     });
+    this.map.setDynamicShadows(this.postfx.currentQuality === "high");
 
     // Every material in the scene is now final: textures may still repaint
     // (target boards) and light uniforms still update (muzzle flash), but no
@@ -196,6 +200,8 @@ export class Game {
     this.rivalVoice.dispose();
     this.matchUI.dispose();
     this.postfx.dispose();
+    resetDynamicShadowCasters();
+    resetEnvironmentCache();
     MatchEvents.clear();
     this.input.dispose();
     this.scene.dispose();

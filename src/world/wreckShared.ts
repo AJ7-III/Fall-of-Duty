@@ -1,5 +1,6 @@
-import { MeshBuilder, StandardMaterial, DynamicTexture, Color3, Color4, Vector3, ParticleSystem } from "@babylonjs/core";
-import type { AbstractMesh, PickingInfo, Scene, Mesh, TransformNode } from "@babylonjs/core";
+import { MeshBuilder, PBRMaterial, DynamicTexture, Color3, Color4, Vector3, ParticleSystem } from "@babylonjs/core";
+import { flatMat } from "../rendering/materials/canvas";
+import type { AbstractMesh, Material, PickingInfo, Scene, Mesh, TransformNode } from "@babylonjs/core";
 import type { WorldMaterials } from "./materials/WorldMaterials";
 import type { Effects } from "../rendering/Effects";
 
@@ -24,8 +25,8 @@ const LAMINATED_HITS_TO_BREAK = 3;
 // One get-or-create for the wrecks' flat-color trim materials. They are
 // shared by name through the scene's material cache so every wreck instance
 // merges into the same static buckets; values only apply on first creation.
-// Extras beyond diffuse/specular (the lamps' emissive) ride the optional
-// last parameter.
+// The legacy (diffuse, specular, power) description maps onto the physically
+// based kit: a bright specular means bare steel, a high power a tight sheen.
 export function getOrCreateColorMat(
   scene: Scene,
   name: string,
@@ -33,15 +34,30 @@ export function getOrCreateColorMat(
   specular: Color3,
   power: number,
   emissive?: Color3
-): StandardMaterial {
-  let mat = scene.getMaterialByName(name) as StandardMaterial | null;
-  if (!mat) {
-    mat = new StandardMaterial(name, scene);
-    mat.diffuseColor = diffuse;
-    mat.specularColor = specular;
-    mat.specularPower = power;
-    if (emissive) mat.emissiveColor = emissive;
-  }
+): PBRMaterial {
+  const specAvg = (specular.r + specular.g + specular.b) / 3;
+  return flatMat(scene, name, {
+    albedo: [diffuse.r, diffuse.g, diffuse.b],
+    rough: Math.max(0.2, Math.min(0.9, 1 - Math.log2(Math.max(2, power)) / 9)),
+    metal: specAvg > 0.4 ? 0.75 : 0,
+    emissive: emissive ? [emissive.r, emissive.g, emissive.b] : undefined,
+  });
+}
+
+// Rain-streaked glass shared by the wrecks: a translucent PBR pane with a
+// glossy film, reflecting the yard environment
+function glassMat(scene: Scene, name: string, tex: DynamicTexture | null, alpha: number): PBRMaterial {
+  const cached = scene.getMaterialByName(name) as PBRMaterial | null;
+  if (cached) return cached;
+  const mat = new PBRMaterial(name, scene);
+  mat.albedoColor = tex ? new Color3(1, 1, 1) : new Color3(0.14, 0.17, 0.2);
+  if (tex) mat.albedoTexture = tex;
+  mat.alpha = alpha;
+  mat.metallic = 0;
+  mat.roughness = 0.18;
+  mat.environmentIntensity = 0.45; // a tint of sky in the glass, not a mirror
+  mat.backFaceCulling = false;
+  mat.emissiveColor = new Color3(0.02, 0.03, 0.04);
   return mat;
 }
 
@@ -51,22 +67,12 @@ export function getOrCreateColorMat(
 export function makeStaticHelpers(
   scene: Scene,
   root: TransformNode,
-  registerStatic: (mat: StandardMaterial, mesh: Mesh) => void
+  registerStatic: (mat: Material, mesh: Mesh) => void
 ): {
-  stat: (mesh: Mesh, mat: StandardMaterial) => Mesh;
-  box: (
-    name: string,
-    w: number,
-    h: number,
-    d: number,
-    x: number,
-    y: number,
-    z: number,
-    mat: StandardMaterial,
-    rotZ?: number
-  ) => Mesh;
+  stat: (mesh: Mesh, mat: Material) => Mesh;
+  box: (name: string, w: number, h: number, d: number, x: number, y: number, z: number, mat: Material, rotZ?: number) => Mesh;
 } {
-  const stat = (mesh: Mesh, mat: StandardMaterial): Mesh => {
+  const stat = (mesh: Mesh, mat: Material): Mesh => {
     mesh.parent = root;
     mesh.material = mat;
     mesh.computeWorldMatrix(true);
@@ -81,10 +87,12 @@ export function makeStaticHelpers(
     x: number,
     y: number,
     z: number,
-    mat: StandardMaterial,
+    mat: Material,
     rotZ: number = 0
   ): Mesh => {
-    const m = MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, scene);
+    // wrap keeps painted textures upright on every side (the default box
+    // mapping turns them 90 degrees on the x faces)
+    const m = MeshBuilder.CreateBox(name, { width: w, height: h, depth: d, wrap: true }, scene);
     m.position.set(x, y, z);
     m.rotation.z = rotZ;
     return stat(m, mat);
@@ -99,14 +107,7 @@ export function applyLaminatedGlass(scene: Scene, pane: Mesh, name: string): Dyn
   const tex = new DynamicTexture(`${name}_tex`, { width: 256, height: 128 }, scene, true);
   paintGlassBase(tex);
 
-  const mat = new StandardMaterial(`${name}_mat`, scene);
-  mat.diffuseTexture = tex;
-  mat.alpha = 0.5;
-  mat.specularColor = new Color3(0.55, 0.58, 0.62);
-  mat.specularPower = 96;
-  mat.emissiveColor = new Color3(0.05, 0.06, 0.07);
-  mat.backFaceCulling = false;
-  pane.material = mat;
+  pane.material = glassMat(scene, `${name}_mat`, tex, 0.42);
 
   return tex;
 }
@@ -125,16 +126,7 @@ export function addTemperedPane(
   y: number,
   z: number
 ): void {
-  let mat = scene.getMaterialByName("carSideGlassMat") as StandardMaterial | null;
-  if (!mat) {
-    mat = new StandardMaterial("carSideGlassMat", scene);
-    mat.diffuseColor = new Color3(0.32, 0.38, 0.42);
-    mat.alpha = 0.34; // clear enough that the cabin reads through it
-    mat.specularColor = new Color3(0.55, 0.58, 0.62);
-    mat.specularPower = 96;
-    mat.emissiveColor = new Color3(0.04, 0.05, 0.06);
-    mat.backFaceCulling = false;
-  }
+  const mat = glassMat(scene, "carSideGlassMat", null, 0.34); // clear enough that the cabin reads through it
 
   const pane = MeshBuilder.CreateBox(name, { width: w, height: h, depth: 0.022 }, scene);
   pane.position.set(x, y, z);
@@ -148,10 +140,12 @@ function paintGlassBase(tex: DynamicTexture): void {
   const ctx = tex.getContext() as CanvasRenderingContext2D;
   const w = 256,
     h = 128;
+  // dark tinted laminate: the sheen comes from the material's reflection,
+  // not from a pale wash in the paint
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#8fa3ad");
-  g.addColorStop(0.55, "#6f8089");
-  g.addColorStop(1, "#5a6970");
+  g.addColorStop(0, "#3a4850");
+  g.addColorStop(0.55, "#2c383f");
+  g.addColorStop(1, "#22292e");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   // rain rivulets

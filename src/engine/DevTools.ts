@@ -1,4 +1,15 @@
-import { EngineInstrumentation, Matrix, SceneInstrumentation, Vector3 } from "@babylonjs/core";
+import {
+  Color3,
+  DynamicTexture,
+  EngineInstrumentation,
+  Matrix,
+  MeshBuilder,
+  PBRMaterial,
+  SceneInstrumentation,
+  StandardMaterial,
+  Vector3,
+  Vector4,
+} from "@babylonjs/core";
 import type { Scene, TransformNode } from "@babylonjs/core";
 import type { Game } from "./Game";
 import type { WeaponId } from "../weapons/WeaponTypes";
@@ -19,6 +30,7 @@ import type { ArmsTuning } from "../viewmodels/ArmsRig";
 //   fod.kill()              kill the player (plays the death cam)
 //   fod.slowmo(factor)      time scale for the live loop
 //   fod.perf(frames)        step N frames and report CPU/GPU frame time + draw calls
+//   fod.lib                 a few Babylon classes for console experiments
 //   fod.inspect(yaw, pitch, focus)  orbit the whole first-person rig around a
 //                           camera-space point (default: the weapon) to see
 //                           the hands from another angle; inspect() resets
@@ -29,6 +41,15 @@ import type { ArmsTuning } from "../viewmodels/ArmsRig";
 
 export interface DevApi {
   game: Game;
+  lib: {
+    MeshBuilder: typeof MeshBuilder;
+    Vector3: typeof Vector3;
+    Vector4: typeof Vector4;
+    Color3: typeof Color3;
+    DynamicTexture: typeof DynamicTexture;
+    StandardMaterial: typeof StandardMaterial;
+    PBRMaterial: typeof PBRMaterial;
+  };
   freeze(): void;
   resume(): void;
   step(frames?: number, dt?: number): string;
@@ -68,6 +89,7 @@ export function installDevTools(game: Game): DevApi {
   const ORDER: WeaponId[] = ["mp44", "m40a3", "usp45"];
   const api: DevApi = {
     game,
+    lib: { MeshBuilder, Vector3, Vector4, Color3, DynamicTexture, StandardMaterial, PBRMaterial },
     freeze() {
       if (g.matchState === "start") g.startMatch();
       if (document.pointerLockElement) document.exitPointerLock();

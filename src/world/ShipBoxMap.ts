@@ -3,18 +3,23 @@ import {
   Mesh,
   MeshBuilder,
   Vector3,
+  Vector4,
   Color3,
   Color4,
   Matrix,
   Quaternion,
   HemisphericLight,
   DirectionalLight,
-  StandardMaterial,
   ShadowGenerator,
+  PBRMaterial,
   RenderTargetTexture,
   ParticleSystem,
 } from "@babylonjs/core";
+import type { Material } from "@babylonjs/core";
 import type { WorldMaterials } from "./materials/WorldMaterials";
+import { flatMat } from "../rendering/materials/canvas";
+import { yardEnvironment } from "../rendering/materials/environment";
+import { dynamicShadowCasters, onDynamicCasterAdded } from "../rendering/dynamicShadows";
 import type { Target } from "./Target";
 import { CarWreck } from "./CarWreck";
 import { TruckWreck } from "./TruckWreck";
@@ -40,10 +45,12 @@ export class ShipBoxMap {
   private materials: WorldMaterials;
   private shadowGen: ShadowGenerator | null = null;
   private shadowMap: RenderTargetTexture | null = null;
+  private shadowsReady = false;
+  private dynamicShadows = false;
 
   // Static props collected during build, then merged into one mesh per
   // material before play starts (scene draw calls drop ~5x, output identical)
-  private casterParts = new Map<StandardMaterial, Mesh[]>();
+  private casterParts = new Map<Material, Mesh[]>();
 
   // The rain volume tracks the player so a modest particle budget always
   // fills the sky overhead (update() copies the camera x/z in here)
@@ -72,18 +79,22 @@ export class ShipBoxMap {
   private createLighting(): void {
     // Overcast rain light: a high flat ambient does most of the work, the
     // "sun" is just a weak cool key so the shadows stay readable but soft
+    // Physically based lighting: the painted yard environment provides the
+    // image-based ambient and every reflection (wet steel, puddles, glass,
+    // chrome); the hemispheric light only fills what the low-res cube
+    // misses, and the directional key gives the relief maps a direction.
+    this.scene.environmentTexture = yardEnvironment(this.scene);
+    this.scene.environmentIntensity = 1.0;
     const ambientLight = new HemisphericLight("ambientLight", new Vector3(0, 1, 0), this.scene);
-    ambientLight.intensity = 1.0;
+    ambientLight.intensity = 0.55;
     ambientLight.diffuse = new Color3(0.78, 0.82, 0.88);
     ambientLight.groundColor = new Color3(0.26, 0.27, 0.25);
 
-    // A touch stronger than a pure-overcast key: the normal-mapped
-    // corrugations, planks and cobbles need a direction to read against
     const sunLight = new DirectionalLight("sunLight", new Vector3(-0.45, -0.9, 0.35), this.scene);
     sunLight.position = new Vector3(25, 45, -25);
-    sunLight.intensity = 0.78;
-    sunLight.diffuse = new Color3(0.8, 0.82, 0.86);
-    sunLight.specular = new Color3(0.6, 0.62, 0.66);
+    sunLight.intensity = 2.2;
+    sunLight.diffuse = new Color3(0.86, 0.87, 0.9);
+    sunLight.specular = new Color3(0.7, 0.72, 0.76);
 
     this.shadowGen = new ShadowGenerator(2048, sunLight);
     this.shadowGen.usePercentageCloserFiltering = true;
@@ -174,7 +185,7 @@ export class ShipBoxMap {
     }
   }
 
-  private collectStatic(mat: StandardMaterial, mesh: Mesh): void {
+  private collectStatic(mat: Material, mesh: Mesh): void {
     const list = this.casterParts.get(mat);
     if (list) {
       list.push(mesh);
@@ -201,13 +212,50 @@ export class ShipBoxMap {
     if (!this.shadowGen) return;
     this.shadowMap = this.shadowGen.getShadowMap();
     this.shadowGen.forceCompilationAsync().then(() => {
-      if (this.shadowMap) {
-        this.shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
-      }
+      this.shadowsReady = true;
+      this.applyShadowMode();
+    });
+    // bodies that land later join the caster list if the tier wants them
+    onDynamicCasterAdded.add((mesh) => {
+      if (this.dynamicShadows && this.shadowGen) this.shadowGen.addShadowCaster(mesh, false);
     });
   }
 
+  // High tier: the soldiers throw real shadows, so the map re-renders every
+  // frame. Lower tiers bake the static yard once and leave the bodies to
+  // their blob shadows.
+  public setDynamicShadows(on: boolean): void {
+    if (this.dynamicShadows === on) return;
+    this.dynamicShadows = on;
+    if (!this.shadowGen) return;
+    for (const mesh of dynamicShadowCasters()) {
+      if (on) this.shadowGen.addShadowCaster(mesh, false);
+      else this.shadowGen.removeShadowCaster(mesh, false);
+    }
+    this.applyShadowMode();
+  }
+
+  private applyShadowMode(): void {
+    if (!this.shadowMap || !this.shadowsReady) return;
+    this.shadowMap.refreshRate = this.dynamicShadows
+      ? RenderTargetTexture.REFRESHRATE_RENDER_ONEVERYFRAME
+      : RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+  }
+
   // Box helper: builds the mesh, registers its AABB, casts/receives shadows
+  // Per-face UVs for a box: `wrap` keeps the texture upright on all four
+  // sides (Babylon's default rotates it on the ±x faces), and `ref` maps
+  // each face proportionally to a reference panel size so a texture painted
+  // for a 6.1 m container side shows the same rib spacing on a 2.5 m end
+  // The container texture is painted for one 20ft side: 6.1 m by 2.6 m
+  private static readonly CONTAINER_PANEL: [number, number] = [6.1, 2.6];
+
+  private static boxUV(w: number, h: number, d: number, ref: [number, number] | null): Vector4[] {
+    const face = (fw: number, fh: number): Vector4 =>
+      ref ? new Vector4(0, 0, Math.min(1, fw / ref[0]), Math.min(1, fh / ref[1])) : new Vector4(0, 0, 1, 1);
+    return [face(w, h), face(w, h), face(d, h), face(d, h), face(w, d), face(w, d)];
+  }
+
   private box(
     name: string,
     w: number,
@@ -215,11 +263,16 @@ export class ShipBoxMap {
     d: number,
     x: number,
     z: number,
-    mat: StandardMaterial,
+    mat: Material,
     yBase: number = 0,
-    collide: boolean = true
+    collide: boolean = true,
+    uvRef: [number, number] | null = null
   ): Mesh {
-    const m = MeshBuilder.CreateBox(name, { width: w, height: h, depth: d }, this.scene);
+    const m = MeshBuilder.CreateBox(
+      name,
+      { width: w, height: h, depth: d, wrap: true, faceUV: ShipBoxMap.boxUV(w, h, d, uvRef) },
+      this.scene
+    );
     m.position.set(x, yBase + h / 2, z);
     m.material = mat;
     this.collectStatic(mat, m);
@@ -229,7 +282,7 @@ export class ShipBoxMap {
     return m;
   }
 
-  private barrel(name: string, x: number, z: number, mat: StandardMaterial): void {
+  private barrel(name: string, x: number, z: number, mat: Material): void {
     const b = MeshBuilder.CreateCylinder(name, { height: 0.95, diameter: 0.62, tessellation: 14 }, this.scene);
     b.position.set(x, 0.475, z);
     b.material = mat;
@@ -246,8 +299,8 @@ export class ShipBoxMap {
     cx: number,
     cz: number,
     yaw: number,
-    mat: StandardMaterial,
-    doorMat: StandardMaterial | null,
+    mat: Material,
+    doorMat: Material | null,
     doorSide: 1 | -1 | 0,
     yBase: number = 0,
     roll: number = 0,
@@ -257,7 +310,11 @@ export class ShipBoxMap {
     const sinR = Math.abs(Math.sin(roll));
     const cy = yBase + 1.3 * cosR + 1.25 * sinR; // low long-edge stays grounded
 
-    const body = MeshBuilder.CreateBox(name, { width: 6.1, height: 2.6, depth: 2.5 }, this.scene);
+    const body = MeshBuilder.CreateBox(
+      name,
+      { width: 6.1, height: 2.6, depth: 2.5, wrap: true, faceUV: ShipBoxMap.boxUV(6.1, 2.6, 2.5, ShipBoxMap.CONTAINER_PANEL) },
+      this.scene
+    );
     body.position.set(cx, cy, cz);
     body.rotation.set(roll, yaw, 0);
     body.computeWorldMatrix(true);
@@ -268,7 +325,11 @@ export class ShipBoxMap {
       // local +x maps to world (cos yaw, -sin yaw)
       const dx = Math.cos(yaw) * 3.08 * doorSide;
       const dz = -Math.sin(yaw) * 3.08 * doorSide;
-      const door = MeshBuilder.CreateBox(`${name}_door`, { width: 0.07, height: 2.44, depth: 2.4 }, this.scene);
+      const door = MeshBuilder.CreateBox(
+        `${name}_door`,
+        { width: 0.07, height: 2.44, depth: 2.4, wrap: true, faceUV: ShipBoxMap.boxUV(0.07, 2.44, 2.4, null) },
+        this.scene
+      );
       door.position.set(cx + dx, cy, cz + dz);
       door.rotation.set(roll, yaw, 0);
       door.computeWorldMatrix(true);
@@ -294,33 +355,27 @@ export class ShipBoxMap {
   // Mouths are BARE — no door leaves on any open crate (per the poster).
   // closedEnd 0 = open both ends, walk straight through; ±1 seals that end
   // with a full wall so it becomes a one-mouth half-open pocket.
-  private openContainer(
-    name: string,
-    cx: number,
-    cz: number,
-    axis: "x" | "z",
-    mat: StandardMaterial,
-    closedEnd: 1 | -1 | 0 = 0
-  ): void {
+  private openContainer(name: string, cx: number, cz: number, axis: "x" | "z", mat: Material, closedEnd: 1 | -1 | 0 = 0): void {
     const len = 6.1;
     const alongX = axis === "x";
     const woodMat = this.materials.createWoodCrateMaterial();
 
+    const P = ShipBoxMap.CONTAINER_PANEL;
     if (alongX) {
-      this.box(`${name}_w1`, len, 2.6, 0.1, cx, cz - 1.2, mat);
-      this.box(`${name}_w2`, len, 2.6, 0.1, cx, cz + 1.2, mat);
-      this.box(`${name}_roof`, len, 0.16, 2.5, cx, cz, mat, 2.44, false);
-      this.box(`${name}_hdrA`, 0.14, 0.3, 2.5, cx - len / 2 + 0.07, cz, mat, 2.3, false);
-      this.box(`${name}_hdrB`, 0.14, 0.3, 2.5, cx + len / 2 - 0.07, cz, mat, 2.3, false);
+      this.box(`${name}_w1`, len, 2.6, 0.1, cx, cz - 1.2, mat, 0, true, P);
+      this.box(`${name}_w2`, len, 2.6, 0.1, cx, cz + 1.2, mat, 0, true, P);
+      this.box(`${name}_roof`, len, 0.16, 2.5, cx, cz, mat, 2.44, false, P);
+      this.box(`${name}_hdrA`, 0.14, 0.3, 2.5, cx - len / 2 + 0.07, cz, mat, 2.3, false, P);
+      this.box(`${name}_hdrB`, 0.14, 0.3, 2.5, cx + len / 2 - 0.07, cz, mat, 2.3, false, P);
       // floor base sits 6mm proud of the stone walkway slabs (no coplanar tops)
       this.box(`${name}_floor`, len - 0.1, 0.04, 2.4, cx, cz, woodMat, 0.006, false);
       PlayerController.registerObstacle(cx - len / 2, cx + len / 2, 2.44, 2.6, cz - 1.25, cz + 1.25);
     } else {
-      this.box(`${name}_w1`, 0.1, 2.6, len, cx - 1.2, cz, mat);
-      this.box(`${name}_w2`, 0.1, 2.6, len, cx + 1.2, cz, mat);
-      this.box(`${name}_roof`, 2.5, 0.16, len, cx, cz, mat, 2.44, false);
-      this.box(`${name}_hdrA`, 2.5, 0.3, 0.14, cx, cz - len / 2 + 0.07, mat, 2.3, false);
-      this.box(`${name}_hdrB`, 2.5, 0.3, 0.14, cx, cz + len / 2 - 0.07, mat, 2.3, false);
+      this.box(`${name}_w1`, 0.1, 2.6, len, cx - 1.2, cz, mat, 0, true, P);
+      this.box(`${name}_w2`, 0.1, 2.6, len, cx + 1.2, cz, mat, 0, true, P);
+      this.box(`${name}_roof`, 2.5, 0.16, len, cx, cz, mat, 2.44, false, P);
+      this.box(`${name}_hdrA`, 2.5, 0.3, 0.14, cx, cz - len / 2 + 0.07, mat, 2.3, false, P);
+      this.box(`${name}_hdrB`, 2.5, 0.3, 0.14, cx, cz + len / 2 - 0.07, mat, 2.3, false, P);
       this.box(`${name}_floor`, 2.4, 0.04, len - 0.1, cx, cz, woodMat, 0.006, false);
       PlayerController.registerObstacle(cx - 1.25, cx + 1.25, 2.44, 2.6, cz - len / 2, cz + len / 2);
     }
@@ -330,9 +385,9 @@ export class ShipBoxMap {
     if (closedEnd !== 0) {
       const off = closedEnd * (len / 2 - 0.05);
       if (alongX) {
-        this.box(`${name}_cap`, 0.1, 2.44, 2.3, cx + off, cz, mat);
+        this.box(`${name}_cap`, 0.1, 2.44, 2.3, cx + off, cz, mat, 0, true, P);
       } else {
-        this.box(`${name}_cap`, 2.3, 2.44, 0.1, cx, cz + off, mat);
+        this.box(`${name}_cap`, 2.3, 2.44, 0.1, cx, cz + off, mat, 0, true, P);
       }
     }
   }
@@ -491,12 +546,7 @@ export class ShipBoxMap {
     const blue = this.materials.createContainerMaterial("blue", "#3a566e", "#2f4759");
     const gray = this.materials.createContainerMaterial("gray", "#878a82", "#74776f");
 
-    let darkMat = this.scene.getMaterialByName("wreckDarkMat") as StandardMaterial | null;
-    if (!darkMat) {
-      darkMat = new StandardMaterial("wreckDarkMat", this.scene);
-      darkMat.diffuseColor = new Color3(0.1, 0.1, 0.11);
-      darkMat.specularColor = new Color3(0.05, 0.05, 0.05);
-    }
+    const darkMat = flatMat(this.scene, "wreckDarkMat", { albedo: [0.1, 0.1, 0.11], rough: 0.8 });
 
     // -- NORTH warehouse: wider, taller, with loading bay details --
     this.box("warehouseN", 30, 10, 12, -2, 27, concreteTall, 0, false);
@@ -621,12 +671,7 @@ export class ShipBoxMap {
     this.box("tower_pipe", 0.1, 4.0, 0.1, tx + 2.6, tz, metalMat, 10, false);
 
     // -- Yard light poles --
-    let lampMat = this.scene.getMaterialByName("lampHeadMat") as StandardMaterial | null;
-    if (!lampMat) {
-      lampMat = new StandardMaterial("lampHeadMat", this.scene);
-      lampMat.diffuseColor = new Color3(0.2, 0.2, 0.2);
-      lampMat.emissiveColor = new Color3(0.55, 0.58, 0.52);
-    }
+    const lampMat = flatMat(this.scene, "lampHeadMat", { albedo: [0.2, 0.2, 0.2], rough: 0.6, emissive: [0.55, 0.58, 0.52] });
     const poles: Array<[number, number, number, number]> = [
       [-20, 11, 1, 0],
       [22, -1, -1, 0],
@@ -714,8 +759,8 @@ export class ShipBoxMap {
   // sparser meadow rolling out past them; skips the walkways, every prop
   // footprint, the open-container floors and the OOB buildings.
   private createLongGrass(): void {
-    const mat = new StandardMaterial("grassTuftMat", this.scene);
-    mat.diffuseTexture = this.materials.createGrassBladeTexture();
+    const mat = new PBRMaterial("grassTuftMat", this.scene);
+    mat.albedoTexture = this.materials.createGrassBladeTexture();
     const bladeMask = this.materials.createGrassBladeMaskTexture();
     bladeMask.getAlphaFromRGB = true;
     mat.opacityTexture = bladeMask;
@@ -725,16 +770,22 @@ export class ShipBoxMap {
     mat.alphaCutOff = 0.02;
     mat.backFaceCulling = false;
     mat.twoSidedLighting = true;
-    mat.specularColor = new Color3(0.05, 0.06, 0.05);
-    // vertical quads catch little of the hemispheric sky light — this fakes
-    // the overcast skylight wrapping through the blades
-    mat.emissiveColor = new Color3(0.13, 0.15, 0.11);
+    mat.metallic = 0;
+    mat.roughness = 0.85;
+    mat.specularIntensity = 0.35; // blades at grazing angles must not flash white
+    // vertical quads catch little of the sky light — this fakes the
+    // overcast skylight wrapping through the blades
+    mat.emissiveColor = new Color3(0.04, 0.05, 0.035);
 
+    // three crossed quads read full from every angle; the per-instance
+    // colour buffer below breaks the carpet up into patches of tone
     const quadA = MeshBuilder.CreatePlane("tuftA", { width: 0.72, height: 0.62 }, this.scene);
     quadA.position.y = 0.31;
     const quadB = quadA.clone("tuftB");
-    quadB.rotation.y = Math.PI / 2;
-    const tuft = Mesh.MergeMeshes([quadA, quadB], true, true, undefined, false, false);
+    quadB.rotation.y = Math.PI / 3;
+    const quadC = quadA.clone("tuftC");
+    quadC.rotation.y = -Math.PI / 3;
+    const tuft = Mesh.MergeMeshes([quadA, quadB, quadC], true, true, undefined, false, false);
     if (!tuft) return;
     tuft.material = mat;
     tuft.isPickable = false; // bullets fly through grass
@@ -781,12 +832,19 @@ export class ShipBoxMap {
     };
 
     const matrices: number[] = [];
+    const colors: number[] = [];
     const tmpMat = new Matrix();
     const tmpScale = new Vector3();
     const tmpPos = new Vector3();
     const drop = (px: number, pz: number): void => {
       const sy = 0.78 + Math.random() * 0.85; // blades 0.5m..1m tall
       const sxz = 0.8 + Math.random() * 0.55;
+      // tone: mostly deep green, some yellowed and some bluer patches, and
+      // a slow large-scale drift across the yard so it reads as terrain
+      const patch = 0.5 + 0.5 * Math.sin(px * 0.37 + 1.3) * Math.cos(pz * 0.29);
+      const shade = 0.55 + Math.random() * 0.35 + patch * 0.25;
+      const yellow = Math.random() < 0.18 ? 0.18 : 0;
+      colors.push(shade * (0.9 + yellow), shade * (1.0 + yellow * 0.4), shade * (0.8 - yellow * 0.4), 1);
       tmpScale.set(sxz, sy, sxz);
       tmpPos.set(px, 0, pz);
       Matrix.ComposeToRef(
@@ -819,6 +877,7 @@ export class ShipBoxMap {
     }
 
     tuft.thinInstanceSetBuffer("matrix", new Float32Array(matrices), 16, true);
+    tuft.thinInstanceSetBuffer("color", new Float32Array(colors), 4, true);
   }
 
   // Steady rain: stretched streak billboards falling through a volume that
@@ -865,7 +924,7 @@ export class ShipBoxMap {
       target.update(deltaTime);
       if (target.isAnimating) animating = true;
     }
-    if (animating && this.shadowMap) {
+    if (animating && this.shadowMap && !this.dynamicShadows) {
       this.shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
     }
   }

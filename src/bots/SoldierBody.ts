@@ -1,6 +1,7 @@
 import {
   Matrix,
   MeshBuilder,
+  PBRMaterial,
   Quaternion,
   StandardMaterial,
   Color3,
@@ -9,9 +10,10 @@ import {
   TransformNode,
   Vector3,
 } from "@babylonjs/core";
-import type { AbstractMesh, AnimationGroup, AssetContainer, Material, Observer, PBRMaterial, Scene, Mesh } from "@babylonjs/core";
+import type { AbstractMesh, AnimationGroup, AssetContainer, Material, Observer, Scene, Mesh } from "@babylonjs/core";
 import { whenSoldierModelReady } from "./SoldierAssets";
 import { terminatorSkin } from "./TerminatorSkin";
+import { registerDynamicShadowCaster } from "../rendering/dynamicShadows";
 import { assetUrl } from "../assets/paths";
 import { captureBoneFrame, dirToLocal, frameQuat, solveTwoBone } from "../anim/boneMath";
 import type { TwoBoneChain } from "../anim/boneMath";
@@ -173,39 +175,36 @@ const TINTS: Record<SoldierTint, Color3> = {
 };
 
 // The scene is a StandardMaterial world (hemispheric + directional light,
-// linear fog, frozen defines) — the glb's PBR is swapped for Standard
-// materials sharing its normal map, over the repainted woodland-camo albedo
-// (the glb's sci-fi plate beige rebaked into war clothing), tinted per
-// faction. Shared by every soldier body AND the first-person arms, so the
-// hands on the rifle are painted exactly like the body on the death cam.
-export function soldierMaterialFor(scene: Scene, tint: SoldierTint, isVisor: boolean, src: Material | null): StandardMaterial {
+// linear fog, frozen defines) — the glb's own PBR material is rebuilt over
+// the repainted woodland-camo albedo (the glb's sci-fi plate beige rebaked
+// into war clothing), keeping its normal map, tinted per faction, with a
+// wet-fabric roughness. Shared by every soldier body AND the first-person
+// arms, so the hands on the rifle are painted exactly like the body on the
+// death cam.
+export function soldierMaterialFor(scene: Scene, tint: SoldierTint, isVisor: boolean, src: Material | null): PBRMaterial {
   const matName = `soldierSkin_${tint}_${isVisor ? "visor" : "body"}`;
-  const cached = scene.getMaterialByName(matName) as StandardMaterial | null;
+  const cached = scene.getMaterialByName(matName) as PBRMaterial | null;
   if (cached) return cached;
-  const std = new StandardMaterial(matName, scene);
+  const mat = new PBRMaterial(matName, scene);
   let albedo = scene.getTextureByName("soldierFatiguesTex") as Texture | null;
   if (!albedo) {
     albedo = new Texture(assetUrl("models/soldier_fatigues.jpg"), scene, false, false); // glTF UVs — no Y flip
     albedo.name = "soldierFatiguesTex";
     albedo.anisotropicFilteringLevel = 8;
   }
-  std.diffuseTexture = albedo;
-  std.diffuseColor = TINTS[tint];
+  mat.albedoTexture = albedo;
+  mat.albedoColor = TINTS[tint];
   const pbr = src as PBRMaterial | null;
   if (pbr?.bumpTexture) {
-    std.bumpTexture = pbr.bumpTexture; // keep the glb's normal map detail
-    std.invertNormalMapX = pbr.invertNormalMapX;
-    std.invertNormalMapY = pbr.invertNormalMapY;
+    mat.bumpTexture = pbr.bumpTexture; // keep the glb's normal map detail
+    mat.invertNormalMapX = pbr.invertNormalMapX;
+    mat.invertNormalMapY = pbr.invertNormalMapY;
   }
-  if (isVisor) {
-    std.specularColor = new Color3(0.45, 0.48, 0.52);
-    std.specularPower = 64;
-  } else {
-    std.specularColor = new Color3(0.08, 0.08, 0.09);
-    std.specularPower = 24;
-  }
-  std.freeze();
-  return std;
+  mat.metallic = isVisor ? 0.5 : 0.05;
+  mat.roughness = isVisor ? 0.22 : 0.62; // rain on cloth and plate
+  mat.enableSpecularAntiAliasing = true;
+  mat.freeze();
+  return mat;
 }
 
 // ------------------------------------------------------------------ hitboxes
@@ -572,6 +571,7 @@ export class SoldierBodyController {
       const source = mesh.material;
       mesh.material = soldierMaterialFor(this.scene, tint, isVisor, source);
       this.skinned.push({ mesh, isVisor, cloth: mesh.material, source });
+      if (!isVisor) registerDynamicShadowCaster(mesh); // real shadows on the high tier
     }
     if (this.terminator) this.applySkin();
   }
