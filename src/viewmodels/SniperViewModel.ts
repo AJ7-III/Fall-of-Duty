@@ -11,16 +11,18 @@ import { camoTexture, knurlTexture } from "./weaponTextures";
 // boltGroup (rotates open, pulls back, runs home).
 
 // Trigger hand wrapped around the grip neck; index laid along the trigger
+// (The soldier's hand runs 0.163 m from wrist to middle knuckle at rig scale, so
+// each wrist sits that far back from where the knuckles must land.)
 const RIGHT_GRIP: HandPose = {
-  wrist: [0.035, 0.09, -0.286],
-  knuckles: [0, -0.86, 0.51],
+  wrist: [0.04, 0.098, -0.365],
+  knuckles: [0, -0.6, 0.8],
   palm: [-1, 0, 0],
-  curl: { thumb: 0.5, index: 0.35, middle: 1.0, ring: 1.0, pinky: 1.0 },
+  curl: { thumb: 0.1, index: [0.1, 0.9, 0.5], middle: 1.0, ring: 1.0, pinky: 1.0 },
 };
 
 // Same hand lifted onto the bolt handle from above, fingers around the ball
 const RIGHT_BOLT: HandPose = {
-  wrist: [0.075, 0.12, -0.25],
+  wrist: [0.157, 0.139, -0.26], // a hand-length back from the ball along the reach
   knuckles: [-0.75, -0.35, 0.55],
   palm: [-0.3, -0.85, -0.4],
   curl: { thumb: 0.6, index: 0.8, middle: 0.9, ring: 0.9, pinky: 0.9 },
@@ -28,10 +30,10 @@ const RIGHT_BOLT: HandPose = {
 
 // Support hand cupping the fore-end from below, fingers over the far side
 const LEFT_GRIP: HandPose = {
-  wrist: [-0.075, 0.005, 0.11],
+  wrist: [-0.117, -0.007, 0.089],
   knuckles: [0.9, 0.35, 0.25],
   palm: [-0.35, 0.92, 0.1],
-  curl: { thumb: 0.45, index: 0.85, middle: 0.9, ring: 0.95, pinky: 1.0 },
+  curl: { thumb: 0.35, index: 0.85, middle: 0.9, ring: 0.95, pinky: 1.0 },
 };
 
 export function buildSniperViewModel(scene: Scene): WeaponViewModel {

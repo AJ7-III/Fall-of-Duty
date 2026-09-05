@@ -4,7 +4,7 @@ import { whenSoldierModelReady } from "../bots/SoldierAssets";
 import { soldierMaterialFor } from "../bots/SoldierBody";
 import { captureBoneFrame, dirToLocal, frameQuat, setSegment, solveTwoBone } from "../anim/boneMath";
 import type { BoneFrame, TwoBoneChain } from "../anim/boneMath";
-import type { HandAnchor, HandPose } from "./kit";
+import type { FingerCurl, HandAnchor, HandPose } from "./kit";
 
 // First-person arms cut from the SAME rigged soldier the third-person body
 // uses — same armour plates, same gloves, same normal map — so what you see
@@ -327,12 +327,19 @@ export class ArmsRig {
     // Fingers: curl each joint about its bind-captured flex axis
     const max = this.tuning.curlMax;
     for (const finger of side.fingers) {
-      const curl = a.curl[finger.key] + (b ? (b.curl[finger.key] - a.curl[finger.key]) * k : 0);
-      for (const joint of finger.joints) {
-        Quaternion.RotationAxisToRef(joint.axis, curl * joint.weight * max, TMP_Q);
+      finger.joints.forEach((joint, i) => {
+        const ca = ArmsRig.jointCurl(a.curl[finger.key], i, joint.weight);
+        const curl = b ? ca + (ArmsRig.jointCurl(b.curl[finger.key], i, joint.weight) - ca) * k : ca;
+        Quaternion.RotationAxisToRef(joint.axis, curl * max, TMP_Q);
         joint.base.multiplyToRef(TMP_Q, joint.node.rotationQuaternion!);
-      }
+      });
     }
+  }
+
+  // A scalar curl spreads down the finger by the joint weights; a tuple sets
+  // each joint directly
+  private static jointCurl(curl: FingerCurl, joint: number, weight: number): number {
+    return typeof curl === "number" ? curl * weight : curl[joint];
   }
 
   private static poseQuat(pose: HandPose, out: Quaternion): Quaternion {

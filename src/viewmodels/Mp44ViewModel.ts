@@ -11,19 +11,21 @@ import { knurlTexture, mp44MetalTexture, mp44WoodTexture } from "./weaponTexture
 // mp44MagGroup (drops and seats during reload).
 
 // Trigger hand on the wooden pistol grip
+// (The soldier's hand runs 0.163 m from wrist to middle knuckle at rig scale, so
+// each wrist sits that far back from where the knuckles must land.)
 const RIGHT_GRIP: HandPose = {
-  wrist: [0.035, 0.005, -0.242], // behind and below the grip: the fist closes on the wood, not the mag
-  knuckles: [0, -0.32, 0.95], // metacarpals run forward-down, perpendicular to the raked grip
+  wrist: [0.036, 0.014, -0.306],
+  knuckles: [0, -0.15, 0.99],
   palm: [-1, 0, 0],
-  curl: { thumb: 0.65, index: 0.45, middle: 1.0, ring: 1.0, pinky: 1.0 }, // index reaches into the guard
+  curl: { thumb: 0.1, index: [0.12, 0.9, 0.55], middle: 1.0, ring: 1.0, pinky: 1.0 },
 };
 
 // Support hand cupping the fore-end from below
 const LEFT_GRIP: HandPose = {
-  wrist: [-0.075, 0.0, 0.1],
+  wrist: [-0.117, -0.007, 0.079],
   knuckles: [0.9, 0.35, 0.25],
   palm: [-0.35, 0.92, 0.1],
-  curl: { thumb: 0.45, index: 0.85, middle: 0.9, ring: 0.95, pinky: 1.0 },
+  curl: { thumb: 0.35, index: 0.85, middle: 0.9, ring: 0.95, pinky: 1.0 },
 };
 
 export function buildMp44ViewModel(scene: Scene): WeaponViewModel {

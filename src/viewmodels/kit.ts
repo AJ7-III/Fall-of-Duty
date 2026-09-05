@@ -8,14 +8,18 @@ import { frameQuat } from "../anim/boneMath";
 
 export type Vec3Tuple = readonly [number, number, number];
 
+// A finger's close: one number spreads a curl down the joints (0 = straight,
+// 1 = fully curled), or three numbers set each joint — a trigger finger
+// runs straight from the knuckle and bends sharply at the middle joint
+export type FingerCurl = number | readonly [number, number, number];
+
 // How a hand holds this weapon: where the wrist sits in weapon space, which
-// way the knuckles point, which way the palm faces, and how far each finger
-// closes (0 = straight, 1 = fully curled).
+// way the knuckles point, which way the palm faces, and how each finger closes
 export interface HandPose {
   wrist: Vec3Tuple;
   knuckles: Vec3Tuple;
   palm: Vec3Tuple;
-  curl: { thumb: number; index: number; middle: number; ring: number; pinky: number };
+  curl: { thumb: FingerCurl; index: FingerCurl; middle: FingerCurl; ring: FingerCurl; pinky: FingerCurl };
 }
 
 // A grip point the ArmsRig chases. ViewModelRig animates `offset` and

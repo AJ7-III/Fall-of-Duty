@@ -131,7 +131,7 @@ export function installDevTools(game: Game): DevApi {
       const pose = g.viewModelRig.models[id].hands[side].pose;
       const { curl, ...rest } = patch;
       Object.assign(pose, rest);
-      if (curl) Object.assign(pose.curl, curl);
+      if (curl) Object.assign(pose.curl, curl as HandPose["curl"]);
       game.stepFrames(3, 1 / 60);
       return pose;
     },

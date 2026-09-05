@@ -796,61 +796,90 @@ export class WorldMaterials {
   // Overcast sky: a low cloud deck with real structure — layered soft
   // blotches at three scales over the gradient, darker undersides, a
   // brighter horizon where the light leaks in under the cloud base
+  // Overcast: a stratus deck built from 3D fractal noise evaluated on the
+  // sphere's direction vectors — seamless around the dome, no pinch at the
+  // zenith, low contrast like a real grey day. The deck brightens toward
+  // the horizon where the light leaks in under it, thins near a soft sun
+  // patch, and carries a slow large-scale drift of darker rain cells.
   public createSkyMaterial(): StandardMaterial {
-    // The dome is a sphere and the canvas is uploaded flipped: canvas
-    // y = s is the zenith, y = s/2 the horizon, and the top half of the
-    // canvas is below ground. Blotches are painted three times across the
-    // seam so the deck wraps without a visible join.
-    const tex = makeCanvasTexture(this.scene, "skyTex", 1024, (ctx, s) => {
-      const grad = ctx.createLinearGradient(0, 0, 0, s);
-      grad.addColorStop(0.0, "#5c6064");
-      grad.addColorStop(0.44, "#7c8186");
-      grad.addColorStop(0.5, "#b4b9bd"); // bright horizon: light leaking under the deck
-      grad.addColorStop(0.58, "#9aa1a7");
-      grad.addColorStop(0.75, "#6f7780");
-      grad.addColorStop(1.0, "#535b65"); // zenith
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, s, s);
+    const S = 512;
+    // hashed 3D value noise
+    const hash = (x: number, y: number, z: number): number => {
+      let h = (x * 374761393 + y * 668265263 + z * 1274126177) | 0;
+      h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+    };
+    const smooth = (t: number): number => t * t * (3 - 2 * t);
+    const noise = (x: number, y: number, z: number): number => {
+      const xi = Math.floor(x);
+      const yi = Math.floor(y);
+      const zi = Math.floor(z);
+      const fx = smooth(x - xi);
+      const fy = smooth(y - yi);
+      const fz = smooth(z - zi);
+      const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+      const c00 = lerp(hash(xi, yi, zi), hash(xi + 1, yi, zi), fx);
+      const c10 = lerp(hash(xi, yi + 1, zi), hash(xi + 1, yi + 1, zi), fx);
+      const c01 = lerp(hash(xi, yi, zi + 1), hash(xi + 1, yi, zi + 1), fx);
+      const c11 = lerp(hash(xi, yi + 1, zi + 1), hash(xi + 1, yi + 1, zi + 1), fx);
+      return lerp(lerp(c00, c10, fy), lerp(c01, c11, fy), fz);
+    };
+    const fbm = (x: number, y: number, z: number, octaves: number): number => {
+      let sum = 0;
+      let amp = 0.5;
+      let f = 1;
+      for (let i = 0; i < octaves; i++) {
+        sum += amp * noise(x * f + 11.3 * i, y * f + 7.1 * i, z * f + 3.7 * i);
+        amp *= 0.5;
+        f *= 2.1;
+      }
+      return sum;
+    };
 
-      const blotch = (x: number, y: number, r: number, color: string, alpha: number, stretch: number): void => {
-        for (const ox of [-s, 0, s]) {
-          const g = ctx.createRadialGradient(x + ox, y, 0, x + ox, y, r);
-          g.addColorStop(0, color);
-          g.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.ellipse(x + ox, y, r * stretch, r * 0.5, 0, 0, Math.PI * 2);
-          ctx.fill();
+    const tex = new DynamicTexture("skyTex", { width: S, height: S }, this.scene, true);
+    const ctx = tex.getContext() as CanvasRenderingContext2D;
+    const img = ctx.createImageData(S, S);
+    const d = img.data;
+    // palette: cloud base, lit cloud, horizon haze, rain cell
+    const base = [96, 102, 110];
+    const lit = [168, 174, 180];
+    const haze = [186, 190, 194];
+    const rain = [70, 76, 84];
+    const sunDir = [0.62, 0.34, 0.71]; // low, off to one side
+    for (let row = 0; row < S; row++) {
+      // canvas is uploaded flipped: row S is the zenith, row S/2 the horizon
+      const v = row / S;
+      const elevation = (v - 0.5) * Math.PI; // -90° (nadir) .. +90° (zenith)
+      const ce = Math.cos(elevation);
+      const se = Math.sin(elevation);
+      for (let col = 0; col < S; col++) {
+        const az = (col / S) * Math.PI * 2;
+        const dx = Math.sin(az) * ce;
+        const dy = se;
+        const dz = Math.cos(az) * ce;
+        // cloud deck lives on a flat plane above the viewer: project the ray
+        // onto it so the texture reads as an overhead layer, not a painted ball
+        const h = Math.max(0.08, dy);
+        const px = (dx / h) * 1.6;
+        const pz = (dz / h) * 1.6;
+        const fade = Math.min(1, Math.max(0, (dy - 0.02) / 0.35)); // haze swallows the deck at the horizon
+        const n = fbm(px, pz, 0.7, 5); // 0..~1
+        const cells = fbm(px * 0.35 + 40, pz * 0.35 + 40, 2.1, 3); // big dark rain cells
+        const dot = dx * sunDir[0] + dy * sunDir[1] + dz * sunDir[2];
+        const sun = Math.pow(Math.max(0, dot), 6) * 0.55; // broad glow through the deck
+        let t = n * 0.85 + sun - (cells - 0.5) * 0.5; // lit vs base mix
+        t = Math.min(1, Math.max(0, t));
+        const i = (row * S + col) * 4;
+        for (let c = 0; c < 3; c++) {
+          let deck = base[c] + (lit[c] - base[c]) * t;
+          deck = deck + (rain[c] - deck) * Math.max(0, cells - 0.62) * 1.4;
+          d[i + c] = deck + (haze[c] - deck) * (1 - fade);
         }
-      };
-      // cloud deck: big slabs, mid lumps, fine wisps — lit tops and dark
-      // undersides mixed so the layer has depth, thinning toward the zenith
-      const layer = (count: number, rMin: number, rMax: number, light: string, dark: string, alpha: number): void => {
-        for (let i = 0; i < count; i++) {
-          const y = s * (0.52 + Math.pow(Math.random(), 1.4) * 0.44); // dense low, thinning toward the zenith
-          const r = rMin + Math.random() * (rMax - rMin);
-          blotch(
-            Math.random() * s,
-            y,
-            r,
-            Math.random() < 0.5 ? light : dark,
-            alpha * (0.6 + Math.random() * 0.4),
-            1.0 + Math.random() * 0.6
-          );
-        }
-      };
-      layer(48, 70, 180, "rgba(184,190,196,1)", "rgba(66,72,80,1)", 0.26);
-      layer(140, 24, 70, "rgba(196,202,208,1)", "rgba(76,82,90,1)", 0.2);
-      layer(320, 6, 24, "rgba(206,211,216,1)", "rgba(86,92,100,1)", 0.14);
-      // the sun sits behind the deck: a broad lit patch, low and to one side
-      ctx.globalAlpha = 1;
-      const glow = ctx.createRadialGradient(s * 0.66, s * 0.62, 10, s * 0.66, s * 0.62, s * 0.3);
-      glow.addColorStop(0, "rgba(232,228,216,0.3)");
-      glow.addColorStop(1, "rgba(232,228,216,0)");
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, s, s);
-    });
+        d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    tex.update();
 
     const mat = new StandardMaterial("skyMat", this.scene);
     mat.emissiveTexture = tex;

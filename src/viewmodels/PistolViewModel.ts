@@ -12,16 +12,18 @@ import { knurlTexture, polymerTexture, stippleTexture } from "./weaponTextures";
 // (drops during reload).
 
 // Firing hand high on the backstrap, thumb along the near flank
+// (The soldier's hand runs 0.163 m from wrist to middle knuckle at rig scale, so
+// each wrist sits that far back from where the knuckles must land.)
 const RIGHT_GRIP: HandPose = {
-  wrist: [0.02, 0.038, -0.132],
-  knuckles: [0, -0.296, 0.955],
+  wrist: [0.02, 0.079, -0.213],
+  knuckles: [0, -0.3, 0.95],
   palm: [-1, 0, 0],
-  curl: { thumb: 0.45, index: 0.35, middle: 1.0, ring: 1.0, pinky: 1.0 },
+  curl: { thumb: 0.1, index: [0.0, 0.9, 0.6], middle: 1.0, ring: 1.0, pinky: 1.0 },
 };
 
 // Support hand wrapped over the firing hand's fingers
 const LEFT_GRIP: HandPose = {
-  wrist: [-0.039, 0.015, -0.127],
+  wrist: [-0.045, 0.041, -0.201],
   knuckles: [0.15, -0.25, 0.95],
   palm: [0.97, 0.1, -0.15],
   curl: { thumb: 0.4, index: 0.9, middle: 0.95, ring: 1.0, pinky: 1.0 },
