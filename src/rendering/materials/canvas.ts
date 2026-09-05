@@ -1,4 +1,4 @@
-import { Color3, DynamicTexture, PBRMaterial, StandardMaterial } from "@babylonjs/core";
+import { Color3, DynamicTexture, PBRMaterial, StandardMaterial, Texture } from "@babylonjs/core";
 import type { BaseTexture, Scene } from "@babylonjs/core";
 
 // Procedural material kit. Every surface in the yard is painted at load time
@@ -45,12 +45,20 @@ export function paintCanvas(size: number, paint: Painter): HTMLCanvasElement {
   return canvas;
 }
 
+// Painted textures tile: DynamicTexture clamps by default, which smears the
+// edge texels across anything scaled past 0..1
+function tiling(tex: DynamicTexture): DynamicTexture {
+  tex.wrapU = Texture.WRAP_ADDRESSMODE;
+  tex.wrapV = Texture.WRAP_ADDRESSMODE;
+  tex.anisotropicFilteringLevel = 8;
+  return tex;
+}
+
 export function makeCanvasTexture(scene: Scene, name: string, size: number, paint: Painter): DynamicTexture {
   const tex = new DynamicTexture(name, { width: size, height: size }, scene, true);
   paint(tex.getContext() as CanvasRenderingContext2D, size);
   tex.update();
-  tex.anisotropicFilteringLevel = 8;
-  return tex;
+  return tiling(tex);
 }
 
 // Scatter soft elliptical blotches — the workhorse for surface grime/variation
@@ -148,8 +156,7 @@ export function normalMapFromHeight(scene: Scene, name: string, h: Float32Array,
   }
   ctx.putImageData(out, 0, 0);
   tex.update();
-  tex.anisotropicFilteringLevel = 8;
-  return tex;
+  return tiling(tex);
 }
 
 // Occlusion / roughness / metallic packed the way PBRMaterial reads it
@@ -195,7 +202,7 @@ function ormFromHeight(
   }
   ctx.putImageData(out, 0, 0);
   tex.update();
-  return tex;
+  return tiling(tex);
 }
 
 export interface StdMatOptions {

@@ -434,7 +434,7 @@ export class WorldMaterials {
       this.scene,
       `stoneWalkMat_${uScale}_${vScale}`,
       512,
-      { rough: 0.55, wet: 0.8, roughVar: 0.3, bump: 2.6, u: uScale, v: vScale },
+      { rough: 0.55, wet: 0.8, roughVar: 0.3, bump: 1.3, u: uScale, v: vScale },
       (ctx, s) => {
         // rain-slick stone
         ctx.fillStyle = "#3b3a37"; // wet mortar
@@ -456,9 +456,10 @@ export class WorldMaterials {
 
             const g = ctx.createRadialGradient(cx - rx * 0.3, cy - ry * 0.35, 2, cx, cy, rx * 1.25);
             const tone = tones[(Math.random() * tones.length) | 0];
-            g.addColorStop(0, "#8a887f");
-            g.addColorStop(0.35, tone);
-            g.addColorStop(1, "#403f3b");
+            g.addColorStop(0, "#7e7c74");
+            g.addColorStop(0.5, tone);
+            g.addColorStop(0.92, tone);
+            g.addColorStop(1, "#45443f");
             ctx.fillStyle = g;
             ctx.beginPath();
             ctx.ellipse(cx, cy, rx, ry, rot, 0, Math.PI * 2);

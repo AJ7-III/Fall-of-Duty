@@ -125,10 +125,13 @@ export class ShipBoxMap {
     // mouths, plus a footing path ringing the inside of the walls. Thin
     // raised slabs, cosmetic only — no collision, and the segments are laid
     // edge-to-edge (never stacked) so the tops can't z-fight.
-    const walkway = (name: string, w: number, d: number, cx: number, cz: number, u: number, v: number) => {
+    // (repeatsX / repeatsZ: how many times the cobble tile runs along each
+    // axis. On a box top Babylon's u follows z and v follows x, so the
+    // material gets them swapped.)
+    const walkway = (name: string, w: number, d: number, cx: number, cz: number, repeatsX: number, repeatsZ: number) => {
       const slab = MeshBuilder.CreateBox(name, { width: w, height: 0.04, depth: d }, this.scene);
       slab.position.set(cx, 0.02, cz);
-      const mat = this.materials.createStoneWalkwayMaterial(u, v);
+      const mat = this.materials.createStoneWalkwayMaterial(repeatsZ, repeatsX);
       slab.material = mat;
       this.collectStatic(mat, slab);
     };
