@@ -19,43 +19,117 @@ export interface BotDifficulty {
   sightMinExposure: number; // 0..1 — fraction of the player's silhouette samples that must be unoccluded to count as contact; recruits need most of a man, veterans engage a knee poking past a car
   damageScale: number; // multiplies bot weapon damage against the player
   healthScale: number; // multiplies bot max health — the ONE bullet-sponge concession, reserved for the Terminator tiers
+  spreadScale: number; // multiplies per-shot dispersion: veterans put rounds where the muzzle points
+  onTargetDegrees: number; // how close the smoothed aim must be to the target before the trigger is pulled
+  holdTime: [number, number]; // seconds a bot with a sight line keeps a good firing position before repositioning
+  plantFeet: boolean; // stop moving to shoot (trained) vs spraying on the run
 }
 
 export const BOT_DIFFICULTIES: Record<string, BotDifficulty> = {
   recruit: {
-    reactionTimeMs: 850, aimErrorDegrees: 6.0, aimSettleSpeed: 2.2,
-    burstLength: [2, 4], burstCooldown: [0.5, 1.1],
-    aggression: 0.3, coverPreference: 0.8, flankChance: 0.08,
-    weaponSwitchSkill: 0.25, reloadDiscipline: 0.35,
-    visionRange: 18, hearingRange: 12, sightMinExposure: 0.55, damageScale: 0.5, healthScale: 1,
+    reactionTimeMs: 850,
+    aimErrorDegrees: 6.0,
+    aimSettleSpeed: 2.2,
+    burstLength: [2, 4],
+    burstCooldown: [0.5, 1.1],
+    aggression: 0.3,
+    coverPreference: 0.8,
+    flankChance: 0.08,
+    weaponSwitchSkill: 0.25,
+    reloadDiscipline: 0.35,
+    visionRange: 18,
+    hearingRange: 12,
+    sightMinExposure: 0.55,
+    damageScale: 0.5,
+    healthScale: 1,
+    spreadScale: 1.5,
+    onTargetDegrees: 8,
+    holdTime: [0.8, 1.6],
+    plantFeet: false,
   },
   regular: {
-    reactionTimeMs: 650, aimErrorDegrees: 4.0, aimSettleSpeed: 3.0,
-    burstLength: [2, 5], burstCooldown: [0.35, 0.9],
-    aggression: 0.45, coverPreference: 0.75, flankChance: 0.15,
-    weaponSwitchSkill: 0.4, reloadDiscipline: 0.5,
-    visionRange: 22, hearingRange: 16, sightMinExposure: 0.4, damageScale: 0.65, healthScale: 1,
+    reactionTimeMs: 650,
+    aimErrorDegrees: 4.0,
+    aimSettleSpeed: 3.0,
+    burstLength: [2, 5],
+    burstCooldown: [0.35, 0.9],
+    aggression: 0.45,
+    coverPreference: 0.75,
+    flankChance: 0.15,
+    weaponSwitchSkill: 0.4,
+    reloadDiscipline: 0.5,
+    visionRange: 22,
+    hearingRange: 16,
+    sightMinExposure: 0.4,
+    damageScale: 0.65,
+    healthScale: 1,
+    spreadScale: 1.25,
+    onTargetDegrees: 7,
+    holdTime: [1.2, 2.2],
+    plantFeet: false,
   },
   hardened: {
-    reactionTimeMs: 480, aimErrorDegrees: 2.6, aimSettleSpeed: 4.2,
-    burstLength: [3, 6], burstCooldown: [0.3, 0.7],
-    aggression: 0.6, coverPreference: 0.65, flankChance: 0.25,
-    weaponSwitchSkill: 0.6, reloadDiscipline: 0.7,
-    visionRange: 26, hearingRange: 20, sightMinExposure: 0.21, damageScale: 0.8, healthScale: 1,
+    reactionTimeMs: 480,
+    aimErrorDegrees: 2.6,
+    aimSettleSpeed: 4.2,
+    burstLength: [3, 6],
+    burstCooldown: [0.3, 0.7],
+    aggression: 0.6,
+    coverPreference: 0.65,
+    flankChance: 0.25,
+    weaponSwitchSkill: 0.6,
+    reloadDiscipline: 0.7,
+    visionRange: 26,
+    hearingRange: 20,
+    sightMinExposure: 0.21,
+    damageScale: 0.8,
+    healthScale: 1,
+    spreadScale: 1.0,
+    onTargetDegrees: 5.5,
+    holdTime: [1.8, 3.2],
+    plantFeet: true,
   },
   veteran: {
-    reactionTimeMs: 320, aimErrorDegrees: 1.6, aimSettleSpeed: 5.5,
-    burstLength: [4, 8], burstCooldown: [0.22, 0.55],
-    aggression: 0.75, coverPreference: 0.55, flankChance: 0.35,
-    weaponSwitchSkill: 0.8, reloadDiscipline: 0.85,
-    visionRange: 30, hearingRange: 26, sightMinExposure: 0.12, damageScale: 1.0, healthScale: 1,
+    reactionTimeMs: 320,
+    aimErrorDegrees: 1.6,
+    aimSettleSpeed: 5.5,
+    burstLength: [4, 8],
+    burstCooldown: [0.22, 0.55],
+    aggression: 0.75,
+    coverPreference: 0.55,
+    flankChance: 0.35,
+    weaponSwitchSkill: 0.8,
+    reloadDiscipline: 0.85,
+    visionRange: 30,
+    hearingRange: 26,
+    sightMinExposure: 0.12,
+    damageScale: 1.0,
+    healthScale: 1,
+    spreadScale: 0.72,
+    onTargetDegrees: 4,
+    holdTime: [2.6, 4.5],
+    plantFeet: true,
   },
   terminator: {
-    reactionTimeMs: 210, aimErrorDegrees: 1.05, aimSettleSpeed: 7.2,
-    burstLength: [5, 10], burstCooldown: [0.16, 0.38],
-    aggression: 0.92, coverPreference: 0.45, flankChance: 0.52,
-    weaponSwitchSkill: 0.95, reloadDiscipline: 0.95,
-    visionRange: 34, hearingRange: 30, sightMinExposure: 0.08, damageScale: 1.08, healthScale: 1,
+    reactionTimeMs: 210,
+    aimErrorDegrees: 1.05,
+    aimSettleSpeed: 7.2,
+    burstLength: [5, 10],
+    burstCooldown: [0.16, 0.38],
+    aggression: 0.92,
+    coverPreference: 0.45,
+    flankChance: 0.52,
+    weaponSwitchSkill: 0.95,
+    reloadDiscipline: 0.95,
+    visionRange: 34,
+    hearingRange: 30,
+    sightMinExposure: 0.08,
+    damageScale: 1.08,
+    healthScale: 1,
+    spreadScale: 0.48,
+    onTargetDegrees: 2.8,
+    holdTime: [3.5, 6.0],
+    plantFeet: true,
   },
 };
 
@@ -77,11 +151,7 @@ const LEVEL_ANCHORS: ReadonlyArray<[number, BotDifficulty]> = [
 export const TERMINATOR_LEVEL = 9;
 
 export function difficultyLevelName(level: number): string {
-  return level <= 2 ? "Recruit"
-    : level <= 4 ? "Regular"
-    : level <= 7 ? "Hardened"
-    : level <= 8 ? "Veteran"
-    : "TERMINATOR";
+  return level <= 2 ? "Recruit" : level <= 4 ? "Regular" : level <= 7 ? "Hardened" : level <= 8 ? "Veteran" : "TERMINATOR";
 }
 
 // Writes the interpolated tuning INTO target: every live bot holds a
@@ -116,6 +186,10 @@ export function applyDifficultyLevel(target: BotDifficulty, level: number): void
   target.hearingRange = mix(a.hearingRange, b.hearingRange);
   target.sightMinExposure = mix(a.sightMinExposure, b.sightMinExposure);
   target.damageScale = mix(a.damageScale, b.damageScale);
+  target.spreadScale = mix(a.spreadScale, b.spreadScale);
+  target.onTargetDegrees = mix(a.onTargetDegrees, b.onTargetDegrees);
+  target.holdTime = [mix(a.holdTime[0], b.holdTime[0]), mix(a.holdTime[1], b.holdTime[1])];
+  target.plantFeet = L >= 4; // hardened and up stop to shoot
   // Terminator durability is a level rule, not a preset: +10% at 9, +20% at 10
   target.healthScale = L >= 10 ? 1.2 : L >= TERMINATOR_LEVEL ? 1.1 : 1;
 }
@@ -125,6 +199,7 @@ export function difficultyForLevel(level: number): BotDifficulty {
     ...BOT_DIFFICULTIES.regular,
     burstLength: [...BOT_DIFFICULTIES.regular.burstLength],
     burstCooldown: [...BOT_DIFFICULTIES.regular.burstCooldown],
+    holdTime: [...BOT_DIFFICULTIES.regular.holdTime],
   };
   applyDifficultyLevel(d, level);
   return d;
@@ -147,8 +222,15 @@ export const BOT_WEAPONS: Record<"mp44" | "usp45" | "m40a3", BotWeaponProfile> =
   mp44: { id: "mp44", damage: 32, fireInterval: 0.1, spreadDeg: 1.4, magSize: 30, reloadTime: 2.4, range: [-1, 0, 12, 30] },
   usp45: { id: "usp45", damage: 24, fireInterval: 0.26, spreadDeg: 1.1, magSize: 12, reloadTime: 2.0, range: [-1, 0, 6, 16] },
   m40a3: {
-    id: "m40a3", damage: 70, fireInterval: 1.45, spreadDeg: 0.25, magSize: 5, reloadTime: 3.2,
-    range: [3, 9, 45, 90], burstLength: [1, 1], burstCooldown: [1.2, 2.0],
+    id: "m40a3",
+    damage: 70,
+    fireInterval: 1.45,
+    spreadDeg: 0.25,
+    magSize: 5,
+    reloadTime: 3.2,
+    range: [3, 9, 45, 90],
+    burstLength: [1, 1],
+    burstCooldown: [1.2, 2.0],
   },
 };
 

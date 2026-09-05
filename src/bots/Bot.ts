@@ -1,10 +1,10 @@
 import { Mesh, TransformNode, Vector3 } from "@babylonjs/core";
-import type { AbstractMesh, Material, Nullable, Scene, StandardMaterial } from "@babylonjs/core";
+import type { Scene } from "@babylonjs/core";
 import { PlayerController } from "../player/PlayerController";
 import { BotNav } from "./BotNav";
 import { BOT_WEAPONS, rangeCurve, rand, DEG } from "./BotConfig";
 import type { BotDifficulty, BotWeaponProfile } from "./BotConfig";
-import { buildSoldier, botMaterials, terminatorMaterial } from "./SoldierBody";
+import { buildSoldier, botMaterials } from "./SoldierBody";
 import type { SoldierRig } from "./SoldierBody";
 import { DeathPerformance } from "../anim/DeathPerformance";
 import type { Effects } from "../rendering/Effects";
@@ -130,7 +130,8 @@ export class Bot {
   private recentDestCount = 0;
   private wantSprint = false;
   private moveSpeed = 0; // actual horizontal speed, for animation + shot spread
-  private holdUntil = 0; // combat: route freshness deadline, not a stand-still hold
+  private holdUntil = 0; // combat: route freshness deadline, or the end of a held firing position
+  private holding = false; // combat: parked on a firing position with a sight line
   private retreatUntil = 0;
   private patrolNextAt = 0;
   private lastPatrolNode = -1; // don't immediately re-walk the leg just finished
@@ -174,10 +175,7 @@ export class Bot {
   private gunPitch = 0.5;
   private shoulderBlend = 0; // 0 = patrol carry, 1 = stock at the shoulder
 
-  // Terminator skin bookkeeping: the cloth each mesh wore before the chrome
   public isTerminator = false;
-  private savedMats = new Map<AbstractMesh, Nullable<Material>>();
-  private savedFaceMats: [StandardMaterial, StandardMaterial] | null = null;
 
   private difficulty: BotDifficulty;
 
@@ -225,50 +223,17 @@ export class Bot {
       this.hitParts.push(part.mesh);
     }
     this.death = new DeathPerformance(rig);
-    // The skinned body lands async: if the chrome skin was applied while the
-    // soldier was still headless, re-sweep so the new meshes get it too.
-    rig.body.whenReady(() => {
-      if (this.isTerminator) {
-        this.setTerminator(false);
-        this.setTerminator(true);
-      }
-    });
   }
 
   // ---------------------------------------------------------- terminator skin
 
-  // Difficulty 9+: the whole body (rifle included) turns liquid-metal chrome;
-  // dropping the slider hands every mesh its original cloth back. The rig's
-  // face materials are overridden too, so the death performance's eyes-shut
-  // swap doesn't paint flesh back onto a chrome face mid-fall.
+  // Difficulty 9+: the body turns liquid-metal chrome with red running
+  // lights (the rifle stays gunmetal). The controller owns the swap, so a
+  // body that lands after the slider moved still gets the right skin.
   public setTerminator(on: boolean): void {
     if (this.isTerminator === on) return;
     this.isTerminator = on;
-    if (on) {
-      const chrome = terminatorMaterial(this.root.getScene());
-      // the gun group detaches from the rig while a corpse's rifle lies on
-      // the ground, so sweep it explicitly alongside the body
-      const meshes = new Set<AbstractMesh>([
-        ...this.root.getChildMeshes(false),
-        ...this.rig.gun.getChildMeshes(false),
-      ]);
-      for (const mesh of meshes) {
-        if (mesh === this.blobShadow) continue;
-        this.savedMats.set(mesh, mesh.material);
-        mesh.material = chrome;
-      }
-      this.savedFaceMats = [this.rig.faceMat, this.rig.faceShutMat];
-      this.rig.faceMat = chrome;
-      this.rig.faceShutMat = chrome;
-    } else {
-      for (const [mesh, mat] of this.savedMats) mesh.material = mat;
-      this.savedMats.clear();
-      if (this.savedFaceMats) {
-        [this.rig.faceMat, this.rig.faceShutMat] = this.savedFaceMats;
-        this.savedFaceMats = null;
-        this.rig.faceMesh.material = this.dead ? this.rig.faceShutMat : this.rig.faceMat;
-      }
-    }
+    this.rig.body.setTerminator(on);
   }
 
   // ------------------------------------------------------------------ damage
@@ -342,6 +307,7 @@ export class Bot {
     this.scanUntil = 0;
     this.searchStopsLeft = 0;
     this.retreatUntil = 0;
+    this.holding = false;
     this.reverseTimer = 0;
     this.lastMoveDirX = 0;
     this.lastMoveDirZ = 0;
@@ -546,11 +512,7 @@ export class Bot {
     if (ctx.playerFired && !p.isDead) {
       const over = Math.max(0, dist - d.hearingRange);
       const err = Math.min(5, over * 0.25);
-      this.lastKnown.set(
-        p.position.x + rand(-err, err),
-        p.position.y,
-        p.position.z + rand(-err, err)
-      );
+      this.lastKnown.set(p.position.x + rand(-err, err), p.position.y, p.position.z + rand(-err, err));
       this.lastKnownVel.copyFrom(p.velocity);
       bb.lastKnownValid = true;
       this.suspicion.copyFrom(this.lastKnown);
@@ -588,6 +550,7 @@ export class Bot {
     else mode = "patrol";
     bb.mode = mode;
     const entered = mode !== prevMode;
+    if (entered) this.holding = false;
 
     if (mode === "reload" || mode === "retreat") {
       // SelfPreserve: break the sight line, hug cover, come back angry
@@ -604,11 +567,27 @@ export class Bot {
       const pz = bb.canSeePlayer ? ctx.player.position.z : this.lastKnown.z;
       const refMovedX = px - this.evalPlayerX;
       const refMovedZ = pz - this.evalPlayerZ;
+      const targetMoved = refMovedX * refMovedX + refMovedZ * refMovedZ > 3.2 * 3.2;
+      // A firing position is worth keeping: sight line, the weapon in its
+      // range band, and the hold window still open. Trained bots settle in
+      // and shoot; they leave when the target relocates, the line is lost,
+      // the timer runs out, or they are being hit where they stand.
+      const profile = this.weapons[this.weaponIndex].profile;
+      const goodSpot = bb.canSeePlayer && bb.hasLineOfFire && rangeCurve(bb.distanceToPlayer, profile.range) >= 0.55;
+      if (this.reachedDest && goodSpot && !this.holding) {
+        this.holding = true;
+        this.holdUntil = ctx.now + rand(d.holdTime[0], d.holdTime[1]);
+      }
+      if (this.holding && (!goodSpot || ctx.now > this.holdUntil || targetMoved || this.hurtFlash > 0.7)) {
+        this.holding = false;
+        this.holdUntil = 0;
+      }
       const stale =
-        this.destNode < 0 ||
-        this.reachedDest ||
-        refMovedX * refMovedX + refMovedZ * refMovedZ > 3.2 * 3.2 ||
-        (ctx.now > this.holdUntil && this.pathIndex >= Math.max(0, this.path.length - 2));
+        !this.holding &&
+        (this.destNode < 0 ||
+          this.reachedDest ||
+          targetMoved ||
+          (ctx.now > this.holdUntil && this.pathIndex >= Math.max(0, this.path.length - 2)));
       if (stale) {
         this.flankRoll = Math.random() < d.flankChance;
         this.evalPlayerX = px;
@@ -704,11 +683,7 @@ export class Bot {
         : this.suspicionValid
           ? this.suspicion
           : ctx.player.position;
-    const vel = visible
-      ? ctx.player.velocity
-      : hasIntel
-        ? this.lastKnownVel
-        : this.suspicionVel;
+    const vel = visible ? ctx.player.velocity : hasIntel ? this.lastKnownVel : this.suspicionVel;
     const vx = vel.x;
     const vz = vel.z;
     const speed = Math.sqrt(vx * vx + vz * vz);
@@ -787,14 +762,7 @@ export class Bot {
       const proximity = 1 / (1 + predDist * 0.38);
       const stretch = Math.min(1, runDist / 5);
       const cover = BotNav.cover[i] ? 1.12 : 1;
-      const score =
-        proximity *
-        stretch *
-        (0.65 + 0.35 * toward) *
-        pressure *
-        cover *
-        this.routeMemoryPenalty(i) *
-        rand(0.9, 1.1);
+      const score = proximity * stretch * (0.65 + 0.35 * toward) * pressure * cover * this.routeMemoryPenalty(i) * rand(0.9, 1.1);
       if (score > bestScore) {
         bestScore = score;
         best = i;
@@ -879,7 +847,12 @@ export class Bot {
     }
 
     // lull top-up (reloadDiscipline is per-think, so ~a few seconds of quiet)
-    if (!bb.canSeePlayer && bb.timeSinceSeen > 3 && current.clip < current.profile.magSize * 0.45 && Math.random() < d.reloadDiscipline * 0.25) {
+    if (
+      !bb.canSeePlayer &&
+      bb.timeSinceSeen > 3 &&
+      current.clip < current.profile.magSize * 0.45 &&
+      Math.random() < d.reloadDiscipline * 0.25
+    ) {
       this.reloadTimer = current.profile.reloadTime;
       return;
     }
@@ -1148,9 +1121,14 @@ export class Bot {
     const w = this.weapons[this.weaponIndex];
     if (w.clip === 0) return; // considerWeapon resolves this next think
 
-    const onTarget = Math.abs(Bot.angDelta(this.aimYaw, this.desiredYaw)) < 8 * DEG;
+    // Committing to a burst needs the aim settled inside the skill gate; once
+    // a burst is running the rounds keep coming as long as the muzzle is
+    // roughly on (tracking a strafing target lags a few degrees — that is
+    // what the per-shot spread is for, not a reason to stop shooting)
+    const aimOff = Math.abs(Bot.angDelta(this.aimYaw, this.desiredYaw));
+    const onTarget = aimOff < d.onTargetDegrees * DEG;
     if (this.burstLeft > 0) {
-      if (this.fireTimer <= 0 && onTarget) this.fire(ctx);
+      if (this.fireTimer <= 0 && aimOff < Math.max(8, d.onTargetDegrees * 2.5) * DEG) this.fire(ctx);
     } else if (this.burstTimer <= 0 && onTarget && bb.hasLineOfFire) {
       // Commit to a burst. Without sight this is suppression — aggression
       // decides whether they hose the corner or hold the shot.
@@ -1181,7 +1159,8 @@ export class Bot {
     // target both make everyone worse
     const p = ctx.player;
     const targetStrafe = Math.abs(p.velocity.x) + Math.abs(p.velocity.z) > 3 ? 1.25 : 1;
-    const spread = profile.spreadDeg * DEG * (this.moveSpeed > 0.5 ? 1.6 : 1) * targetStrafe;
+    const onTheMove = this.moveSpeed > 0.5 ? 1.6 : 1;
+    const spread = profile.spreadDeg * DEG * d.spreadScale * onTheMove * targetStrafe;
     const shotYaw = this.aimYaw + rand(-spread, spread);
     const shotPitch = this.aimPitch + rand(-spread, spread) * 0.75;
     const cosP = Math.cos(shotPitch);
@@ -1250,11 +1229,7 @@ export class Bot {
         rz = -dx / h;
       }
     }
-    out.set(
-      p.position.x + rx * s.lat,
-      p.position.y + p.eyeHeight * s.h,
-      p.position.z + rz * s.lat
-    );
+    out.set(p.position.x + rx * s.lat, p.position.y + p.eyeHeight * s.h, p.position.z + rz * s.lat);
   }
 
   // Segment vs the player's vertical cylinder (radius matches the collision
@@ -1290,10 +1265,18 @@ export class Bot {
     // straight line to the next-next one is walkable
     let intendedSpeed = 0;
     let moveYaw = this.yaw;
-    if (this.destNode >= 0 && this.pathIndex < this.path.length) {
+    // Trained shooters stop to fire: while a burst is running at a visible
+    // target the feet stay planted (recruits keep spraying on the move)
+    const planted = this.difficulty.plantFeet && bb.canSeePlayer && this.burstLeft > 0 && !this.wantSprint;
+    if (!planted && this.destNode >= 0 && this.pathIndex < this.path.length) {
       while (
         this.pathIndex + 1 < this.path.length &&
-        !BotNav.walkBlocked(this.position.x, this.position.z, BotNav.xs[this.path[this.pathIndex + 1]], BotNav.zs[this.path[this.pathIndex + 1]])
+        !BotNav.walkBlocked(
+          this.position.x,
+          this.position.z,
+          BotNav.xs[this.path[this.pathIndex + 1]],
+          BotNav.zs[this.path[this.pathIndex + 1]]
+        )
       ) {
         this.pathIndex++;
       }
@@ -1342,7 +1325,14 @@ export class Bot {
 
     // Same gravity, same solver, same limits as the player
     this.velocity.y += PlayerController.GRAVITY * dt;
-    PlayerController.moveAndCollide(this.tmpPrev.copyFrom(this.position), this.velocity, dt, BODY_HEIGHT, BODY_RADIUS, this.tmpNext);
+    PlayerController.moveAndCollide(
+      this.tmpPrev.copyFrom(this.position),
+      this.velocity,
+      dt,
+      BODY_HEIGHT,
+      BODY_RADIUS,
+      this.tmpNext
+    );
     const movedX = this.tmpNext.x - this.position.x;
     const movedZ = this.tmpNext.z - this.position.z;
     this.position.copyFrom(this.tmpNext);

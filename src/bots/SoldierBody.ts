@@ -6,14 +6,13 @@ import {
   StandardMaterial,
   Color3,
   DynamicTexture,
-  RawCubeTexture,
   Texture,
-  Constants,
   TransformNode,
   Vector3,
 } from "@babylonjs/core";
-import type { AnimationGroup, AssetContainer, Material, Observer, PBRMaterial, Scene } from "@babylonjs/core";
+import type { AbstractMesh, AnimationGroup, AssetContainer, Material, Observer, PBRMaterial, Scene } from "@babylonjs/core";
 import { whenSoldierModelReady } from "./SoldierAssets";
+import { terminatorSkin } from "./TerminatorSkin";
 import { assetUrl } from "../assets/paths";
 import { captureBoneFrame, dirToLocal, frameQuat, solveTwoBone } from "../anim/boneMath";
 import type { TwoBoneChain } from "../anim/boneMath";
@@ -208,67 +207,6 @@ export function soldierMaterialFor(scene: Scene, tint: SoldierTint, isVisor: boo
   }
   std.freeze();
   return std;
-}
-
-// The Terminator skin: one shared chrome material for difficulty 9+ —
-// unchanged, and it skins perfectly well over the glTF body.
-export function terminatorMaterial(scene: Scene): StandardMaterial {
-  let m = scene.getMaterialByName("terminatorChromeMat") as StandardMaterial | null;
-  if (m) return m;
-
-  const size = 16;
-  const shade = (y: number): [number, number, number] => {
-    if (y > 0.12) {
-      const t = (y - 0.12) / 0.88;
-      return [205 - 95 * t, 212 - 87 * t, 222 - 72 * t];
-    }
-    if (y > -0.08) {
-      const t = (y + 0.08) / 0.2;
-      return [40 + 165 * t, 44 + 168 * t, 50 + 172 * t];
-    }
-    const t = Math.min(1, (-y - 0.08) / 0.92);
-    return [40 - 22 * t, 44 - 24 * t, 50 - 26 * t];
-  };
-  const axes: ReadonlyArray<(u: number, v: number) => number> = [
-    (_u, v) => -v,
-    (_u, v) => -v,
-    () => 1,
-    () => -1,
-    (_u, v) => -v,
-    (_u, v) => -v,
-  ];
-  const faces = axes.map((yOf) => {
-    const data = new Uint8Array(size * size * 4);
-    for (let row = 0; row < size; row++) {
-      for (let col = 0; col < size; col++) {
-        const u = (2 * (col + 0.5)) / size - 1;
-        const v = (2 * (row + 0.5)) / size - 1;
-        const y = yOf(u, v) / Math.sqrt(u * u + v * v + 1);
-        const [r, g, b] = shade(y);
-        const i = (row * size + col) * 4;
-        data[i] = r;
-        data[i + 1] = g;
-        data[i + 2] = b;
-        data[i + 3] = 255;
-      }
-    }
-    return data;
-  });
-
-  m = new StandardMaterial("terminatorChromeMat", scene);
-  m.reflectionTexture = new RawCubeTexture(
-    scene,
-    faces,
-    size,
-    Constants.TEXTUREFORMAT_RGBA,
-    Constants.TEXTURETYPE_UNSIGNED_INT,
-    true
-  );
-  m.diffuseColor = new Color3(0.03, 0.033, 0.04);
-  m.specularColor = new Color3(1, 1, 1);
-  m.specularPower = 96;
-  m.emissiveColor = new Color3(0.02, 0.022, 0.026);
-  return m;
 }
 
 // ------------------------------------------------------------------ hitboxes
@@ -519,6 +457,8 @@ export class SoldierBodyController {
 
   private loaded = false;
   private dying = false;
+  private terminator = false;
+  private skinned: Array<{ mesh: AbstractMesh; isVisor: boolean; cloth: Material | null; source: Material | null }> = [];
 
   private joints: Record<string, TransformNode> = {};
   private idleG: AnimationGroup | null = null;
@@ -630,7 +570,27 @@ export class SoldierBodyController {
       mesh.isPickable = false; // hitboxes do the picking
       mesh.alwaysSelectAsActiveMesh = true; // skinned bounds don't track the animation
       const isVisor = mesh.name.toLowerCase().includes("visor");
-      mesh.material = soldierMaterialFor(this.scene, tint, isVisor, mesh.material);
+      const source = mesh.material;
+      mesh.material = soldierMaterialFor(this.scene, tint, isVisor, source);
+      this.skinned.push({ mesh, isVisor, cloth: mesh.material, source });
+    }
+    if (this.terminator) this.applySkin();
+  }
+
+  // Difficulty 9+: the body turns liquid-metal chrome with red running
+  // lights; dropping the slider hands the cloth back. Applies immediately
+  // if the skin has landed, otherwise the moment it does.
+  public setTerminator(on: boolean): void {
+    if (this.terminator === on) return;
+    this.terminator = on;
+    if (this.loaded) this.applySkin();
+  }
+
+  private applySkin(): void {
+    const bodySource = this.skinned.find((s) => !s.isVisor)?.source ?? null;
+    const chrome = this.terminator ? terminatorSkin(this.scene, bodySource) : null;
+    for (const s of this.skinned) {
+      s.mesh.material = chrome ? (s.isVisor ? chrome.visor : chrome.body) : s.cloth;
     }
   }
 
