@@ -73,14 +73,17 @@ export class ShipBoxMap {
     // Overcast rain light: a high flat ambient does most of the work, the
     // "sun" is just a weak cool key so the shadows stay readable but soft
     const ambientLight = new HemisphericLight("ambientLight", new Vector3(0, 1, 0), this.scene);
-    ambientLight.intensity = 0.95;
-    ambientLight.diffuse = new Color3(0.76, 0.8, 0.86);
-    ambientLight.groundColor = new Color3(0.24, 0.25, 0.24);
+    ambientLight.intensity = 1.0;
+    ambientLight.diffuse = new Color3(0.78, 0.82, 0.88);
+    ambientLight.groundColor = new Color3(0.26, 0.27, 0.25);
 
+    // A touch stronger than a pure-overcast key: the normal-mapped
+    // corrugations, planks and cobbles need a direction to read against
     const sunLight = new DirectionalLight("sunLight", new Vector3(-0.45, -0.9, 0.35), this.scene);
     sunLight.position = new Vector3(25, 45, -25);
-    sunLight.intensity = 0.62;
-    sunLight.diffuse = new Color3(0.74, 0.78, 0.84);
+    sunLight.intensity = 0.78;
+    sunLight.diffuse = new Color3(0.8, 0.82, 0.86);
+    sunLight.specular = new Color3(0.6, 0.62, 0.66);
 
     this.shadowGen = new ShadowGenerator(2048, sunLight);
     this.shadowGen.usePercentageCloserFiltering = true;
@@ -94,7 +97,7 @@ export class ShipBoxMap {
     this.scene.fogEnd = 140;
     this.scene.fogColor = new Color3(0.5, 0.53, 0.56);
 
-    const sky = MeshBuilder.CreateSphere("skyDome", { diameter: 600, segments: 12, sideOrientation: 1 }, this.scene);
+    const sky = MeshBuilder.CreateSphere("skyDome", { diameter: 600, segments: 32, sideOrientation: 1 }, this.scene);
     sky.material = this.materials.createSkyMaterial();
     sky.isPickable = false;
     sky.freezeWorldMatrix();

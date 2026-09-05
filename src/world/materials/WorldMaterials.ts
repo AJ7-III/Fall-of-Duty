@@ -579,26 +579,63 @@ export class WorldMaterials {
     });
   }
 
+  // Overcast sky: a low cloud deck with real structure — layered soft
+  // blotches at three scales over the gradient, darker undersides, a
+  // brighter horizon where the light leaks in under the cloud base
   public createSkyMaterial(): StandardMaterial {
-    const tex = makeCanvasTexture(this.scene, "skyTex", 256, (ctx, s) => {
+    // The dome is a sphere and the canvas is uploaded flipped: canvas
+    // y = s is the zenith, y = s/2 the horizon, and the top half of the
+    // canvas is below ground. Blotches are painted three times across the
+    // seam so the deck wraps without a visible join.
+    const tex = makeCanvasTexture(this.scene, "skyTex", 1024, (ctx, s) => {
       const grad = ctx.createLinearGradient(0, 0, 0, s);
-      grad.addColorStop(0.0, "#39414e");
-      grad.addColorStop(0.45, "#5d6671");
-      grad.addColorStop(0.68, "#8b9298");
-      grad.addColorStop(0.78, "#9aa0a3"); // bright horizon band
-      grad.addColorStop(1.0, "#565a5e");
+      grad.addColorStop(0.0, "#5c6064");
+      grad.addColorStop(0.44, "#7c8186");
+      grad.addColorStop(0.5, "#b4b9bd"); // bright horizon: light leaking under the deck
+      grad.addColorStop(0.58, "#9aa1a7");
+      grad.addColorStop(0.75, "#6f7780");
+      grad.addColorStop(1.0, "#535b65"); // zenith
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, s, s);
-      // faint cloud streaks
-      for (let i = 0; i < 26; i++) {
-        ctx.globalAlpha = 0.05 + Math.random() * 0.06;
-        ctx.fillStyle = "#aab0b6";
-        const y = Math.random() * s * 0.6;
-        ctx.beginPath();
-        ctx.ellipse(Math.random() * s, y, 40 + Math.random() * 80, 5 + Math.random() * 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
+
+      const blotch = (x: number, y: number, r: number, color: string, alpha: number, stretch: number): void => {
+        for (const ox of [-s, 0, s]) {
+          const g = ctx.createRadialGradient(x + ox, y, 0, x + ox, y, r);
+          g.addColorStop(0, color);
+          g.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.ellipse(x + ox, y, r * stretch, r * 0.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      };
+      // cloud deck: big slabs, mid lumps, fine wisps — lit tops and dark
+      // undersides mixed so the layer has depth, thinning toward the zenith
+      const layer = (count: number, rMin: number, rMax: number, light: string, dark: string, alpha: number): void => {
+        for (let i = 0; i < count; i++) {
+          const y = s * (0.52 + Math.pow(Math.random(), 1.4) * 0.44); // dense low, thinning toward the zenith
+          const r = rMin + Math.random() * (rMax - rMin);
+          blotch(
+            Math.random() * s,
+            y,
+            r,
+            Math.random() < 0.5 ? light : dark,
+            alpha * (0.6 + Math.random() * 0.4),
+            1.0 + Math.random() * 0.6
+          );
+        }
+      };
+      layer(48, 70, 180, "rgba(184,190,196,1)", "rgba(66,72,80,1)", 0.26);
+      layer(140, 24, 70, "rgba(196,202,208,1)", "rgba(76,82,90,1)", 0.2);
+      layer(320, 6, 24, "rgba(206,211,216,1)", "rgba(86,92,100,1)", 0.14);
+      // the sun sits behind the deck: a broad lit patch, low and to one side
       ctx.globalAlpha = 1;
+      const glow = ctx.createRadialGradient(s * 0.66, s * 0.62, 10, s * 0.66, s * 0.62, s * 0.3);
+      glow.addColorStop(0, "rgba(232,228,216,0.3)");
+      glow.addColorStop(1, "rgba(232,228,216,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, s, s);
     });
 
     const mat = new StandardMaterial("skyMat", this.scene);
