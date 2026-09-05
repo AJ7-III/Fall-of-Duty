@@ -64,6 +64,10 @@ export interface SoldierRig {
   torso: TransformNode; // proxy — bobs with footfalls, arches in the death gasp
   head: TransformNode; // proxy riding the head joint (death-cam tracks it)
   gunArm: TransformNode; // weapon pivot — pitches with the aim, swings in death
+  armL: TransformNode; // death-only: per-arm swing (x) and flop-out (z) on top of gunArm
+  armR: TransformNode;
+  foreL: TransformNode; // death-only: elbow bend (x)
+  foreR: TransformNode;
   gun: TransformNode; // the rifle alone — detachable so the dying drop it
   gunHomePos: Vector3;
   muzzle: TransformNode;
@@ -103,7 +107,15 @@ function mottled(base: string, tones: string[], speckle: string) {
     for (let i = 0; i < 42; i++) {
       c.fillStyle = tones[i % tones.length];
       c.beginPath();
-      c.ellipse(Math.random() * 128, Math.random() * 128, 6 + Math.random() * 14, 4 + Math.random() * 9, Math.random() * Math.PI, 0, Math.PI * 2);
+      c.ellipse(
+        Math.random() * 128,
+        Math.random() * 128,
+        6 + Math.random() * 14,
+        4 + Math.random() * 9,
+        Math.random() * Math.PI,
+        0,
+        Math.PI * 2
+      );
       c.fill();
     }
     c.fillStyle = speckle;
@@ -218,9 +230,12 @@ export function terminatorMaterial(scene: Scene): StandardMaterial {
     return [40 - 22 * t, 44 - 24 * t, 50 - 26 * t];
   };
   const axes: ReadonlyArray<(u: number, v: number) => number> = [
-    (_u, v) => -v, (_u, v) => -v,
-    () => 1, () => -1,
-    (_u, v) => -v, (_u, v) => -v,
+    (_u, v) => -v,
+    (_u, v) => -v,
+    () => 1,
+    () => -1,
+    (_u, v) => -v,
+    (_u, v) => -v,
   ];
   const faces = axes.map((yOf) => {
     const data = new Uint8Array(size * size * 4);
@@ -231,7 +246,10 @@ export function terminatorMaterial(scene: Scene): StandardMaterial {
         const y = yOf(u, v) / Math.sqrt(u * u + v * v + 1);
         const [r, g, b] = shade(y);
         const i = (row * size + col) * 4;
-        data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+        data[i] = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = 255;
       }
     }
     return data;
@@ -239,8 +257,11 @@ export function terminatorMaterial(scene: Scene): StandardMaterial {
 
   m = new StandardMaterial("terminatorChromeMat", scene);
   m.reflectionTexture = new RawCubeTexture(
-    scene, faces, size,
-    Constants.TEXTUREFORMAT_RGBA, Constants.TEXTURETYPE_UNSIGNED_INT,
+    scene,
+    faces,
+    size,
+    Constants.TEXTUREFORMAT_RGBA,
+    Constants.TEXTURETYPE_UNSIGNED_INT,
     true
   );
   m.diffuseColor = new Color3(0.03, 0.033, 0.04);
@@ -300,6 +321,10 @@ export function buildSoldier(scene: Scene, name: string, look: SoldierLook): Sol
   };
   const torso = proxy("torsoP", 1.25);
   const head = proxy("headP", 1.7);
+  const armL = proxy("armLP", 1.45);
+  const armR = proxy("armRP", 1.45);
+  const foreL = proxy("foreLP", 1.2);
+  const foreR = proxy("foreRP", 1.2);
   const hipL = proxy("hipLP", 0.95);
   const hipR = proxy("hipRP", 0.95);
   const kneeL = proxy("kneeLP", 0.5);
@@ -384,15 +409,46 @@ export function buildSoldier(scene: Scene, name: string, look: SoldierLook): Sol
   blobShadow.isPickable = false;
 
   const body = new SoldierBodyController(scene, name, look, {
-    root, torso, head, hipL, hipR, kneeL, kneeR,
-    mountFollower, gunArm, gripR, gripL, hitboxes,
+    root,
+    torso,
+    head,
+    hipL,
+    hipR,
+    kneeL,
+    kneeR,
+    armL,
+    armR,
+    foreL,
+    foreR,
+    mountFollower,
+    gunArm,
+    gripR,
+    gripL,
+    hitboxes,
   });
 
   return {
-    root, torso, head, gunArm, gun, gunHomePos, muzzle,
-    hipL, hipR, kneeL, kneeR,
-    faceMesh, faceMat: mats.face, faceShutMat: mats.faceShut,
-    blobShadow, parts, body,
+    root,
+    torso,
+    head,
+    gunArm,
+    gun,
+    gunHomePos,
+    muzzle,
+    armL,
+    armR,
+    foreL,
+    foreR,
+    hipL,
+    hipR,
+    kneeL,
+    kneeR,
+    faceMesh,
+    faceMat: mats.face,
+    faceShutMat: mats.faceShut,
+    blobShadow,
+    parts,
+    body,
   };
 }
 
@@ -406,6 +462,10 @@ interface ControllerRefs {
   hipR: TransformNode;
   kneeL: TransformNode;
   kneeR: TransformNode;
+  armL: TransformNode;
+  armR: TransformNode;
+  foreL: TransformNode;
+  foreR: TransformNode;
   mountFollower: TransformNode;
   gunArm: TransformNode;
   gripR: TransformNode;
@@ -531,7 +591,9 @@ export class SoldierBodyController {
     // Face the character down the rig's +Z: the toes tell us where the
     // model actually looks, whatever the exporter and the RH->LH root did.
     // Measured in root-local space — the root may already be yawed.
-    const toeDir = j("LeftToe_End").getAbsolutePosition().clone()
+    const toeDir = j("LeftToe_End")
+      .getAbsolutePosition()
+      .clone()
       .addInPlace(j("RightToe_End").getAbsolutePosition())
       .subtractInPlace(j("LeftToeBase").getAbsolutePosition())
       .subtractInPlace(j("RightToeBase").getAbsolutePosition());
@@ -731,6 +793,22 @@ export class SoldierBodyController {
     this.startGroups();
   }
 
+  // Leg geometry for the death choreography's planted-feet collapse: hip
+  // height above the root and the thigh/shin lengths, measured from the
+  // skeleton (rest-pose defaults until it lands)
+  public legMetrics(): { hip: number; thigh: number; shin: number } {
+    const J = this.joints;
+    if (!this.loaded || !J.Hips || !J.LeftUpLeg || !J.LeftLeg || !J.LeftFoot) {
+      return { hip: 0.95, thigh: 0.45, shin: 0.42 };
+    }
+    const rootY = this.r.root.getAbsolutePosition().y;
+    return {
+      hip: J.Hips.getAbsolutePosition().y - rootY,
+      thigh: Vector3.Distance(J.LeftUpLeg.getAbsolutePosition(), J.LeftLeg.getAbsolutePosition()),
+      shin: Vector3.Distance(J.LeftLeg.getAbsolutePosition(), J.LeftFoot.getAbsolutePosition()),
+    };
+  }
+
   private captureDeathPose(): void {
     const r = this.r;
     const J = this.joints;
@@ -748,12 +826,17 @@ export class SoldierBodyController {
     add("Spine2", () => ({ right: r.torso.rotation.x * 0.55, fwd: 0 }));
     add("Neck", () => ({ right: r.head.rotation.x * 0.45, fwd: r.head.rotation.z * 0.4 }));
     add("Head", () => ({ right: r.head.rotation.x * 0.65, fwd: r.head.rotation.z * 0.6 }));
-    const armAngles = (): { right: number; fwd: number } => ({
-      right: r.gunArm.rotation.x - this.gunArmX0,
-      fwd: r.gunArm.rotation.z - this.gunArmZ0,
-    });
-    add("LeftArm", armAngles);
-    add("RightArm", armAngles);
+    // arms: the shared gunArm swing plus each arm's own death offsets
+    add("LeftArm", () => ({
+      right: r.gunArm.rotation.x - this.gunArmX0 + r.armL.rotation.x,
+      fwd: r.gunArm.rotation.z - this.gunArmZ0 + r.armL.rotation.z,
+    }));
+    add("RightArm", () => ({
+      right: r.gunArm.rotation.x - this.gunArmX0 + r.armR.rotation.x,
+      fwd: r.gunArm.rotation.z - this.gunArmZ0 - r.armR.rotation.z,
+    }));
+    add("LeftForeArm", () => ({ right: r.foreL.rotation.x, fwd: 0 }));
+    add("RightForeArm", () => ({ right: r.foreR.rotation.x, fwd: 0 }));
     add("LeftUpLeg", () => ({ right: r.hipL.rotation.x, fwd: 0 }));
     add("RightUpLeg", () => ({ right: r.hipR.rotation.x, fwd: 0 }));
     add("LeftLeg", () => ({ right: r.kneeL.rotation.x, fwd: 0 }));

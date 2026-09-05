@@ -39,9 +39,9 @@ export class PlayerController {
   public static readonly MAX_HEALTH = 100;
   private static readonly REGEN_DELAY = 4.0; // seconds without damage before regen
   private static readonly REGEN_RATE = 40; // hp per second once regenerating
-  // Long enough for the third-person death performance to play out fully
-  // (clutch, gasp, fall, eyes close, settle) plus a beat of stillness
-  private static readonly RESPAWN_DELAY = 3.7;
+  // Game seconds for the third-person death to play out (the collapse runs
+  // in slow motion, so this is ~4.5 real seconds) plus a beat of stillness
+  private static readonly RESPAWN_DELAY = 3.2;
   private static readonly SPAWNS: ReadonlyArray<[number, number]> = [
     [-13.5, -13.5], [13.5, 13.5], [-13.5, 13.5], [13.5, -13.5],
   ];

@@ -96,12 +96,12 @@ export class Game {
     this.time = new Time();
     this.input = new Input(this.canvas);
     this.materials = new WorldMaterials(this.scene);
-    
+
     this.cameraRig = new CameraRig(this.scene);
     this.player = new PlayerController(this.input, this.cameraRig);
     this.weaponManager = new WeaponManager();
     this.map = new ShipBoxMap(this.scene, this.materials);
-    
+
     this.viewModelRig = new ViewModelRig(this.scene, this.cameraRig);
     this.scopeOverlay = new ScopeOverlay();
     this.effects = new Effects(this.scene);
@@ -112,23 +112,21 @@ export class Game {
     this.player.spawnPicker = (spawns) => this.botManager.pickPlayerSpawn(spawns);
     this.hud = new Hud(this.canvas);
     this.minimap = new Minimap(this.map);
-    this.matchUI = new MatchUI(
-      this.effects,
-      () => this.weaponManager.getActiveWeapon().id,
-      {
-        onStart: () => this.startMatch(),
-        onResume: () => this.input.requestPointerLock(),
-        onEndMatch: () => this.endMatch(),
-        onPlayAgain: () => this.restartMatch(),
-        onDifficultyChange: (level) => this.botManager.setDifficultyLevel(level),
-        onToggleTrashTalk: (muted) => this.rivalVoice.setMuted(muted),
-      }
-    );
+    this.matchUI = new MatchUI(this.effects, () => this.weaponManager.getActiveWeapon().id, {
+      onStart: () => this.startMatch(),
+      onResume: () => this.input.requestPointerLock(),
+      onEndMatch: () => this.endMatch(),
+      onPlayAgain: () => this.restartMatch(),
+      onDifficultyChange: (level) => this.botManager.setDifficultyLevel(level),
+      onToggleTrashTalk: (muted) => this.rivalVoice.setMuted(muted),
+    });
     this.rivalVoice = new RivalVoice();
     // Both build meshes/materials, so they sit before the freeze below: the
     // death-cam corpse actor, and the killstreak hardware (laptop viewmodel,
     // Apache airframe, the strike jets)
-    this.deathCam = new DeathCam(this.scene);
+    this.deathCam = new DeathCam(this.scene, (scale) => {
+      this.time.scale = scale;
+    });
     this.killstreaks = new Killstreaks(
       this.scene,
       this.cameraRig.camera,
@@ -304,13 +302,7 @@ export class Game {
       } else {
         const shownWeapon = this.weaponManager.getActiveWeapon();
         const shownAds = shownWeapon.adsAnimator.getInterpolatedState();
-        this.viewModelRig.update(
-          dt,
-          shownWeapon,
-          this.input,
-          this.player.isSprinting,
-          this.weaponManager.getLowerAmount()
-        );
+        this.viewModelRig.update(dt, shownWeapon, this.input, this.player.isSprinting, this.weaponManager.getLowerAmount());
         this.scopeOverlay.update(shownAds.scopeOpacity, shownAds.vignetteOpacity, shownWeapon.adsAnimator.getProgress());
       }
       if (hideViewmodel !== this.lastHideCrosshair) {
@@ -392,11 +384,7 @@ export class Game {
     this.input.clearAllInputs();
     this.killstreaks.setPaused(true); // the rotor must not thump over the menu
     this.hud.hidePrompt();
-    this.matchUI.showPause(
-      this.botManager.playerKills,
-      this.player.deaths,
-      this.botManager.getDifficultyLevel()
-    );
+    this.matchUI.showPause(this.botManager.playerKills, this.player.deaths, this.botManager.getDifficultyLevel());
   }
 
   private resumeMatch(): void {
@@ -413,8 +401,7 @@ export class Game {
     if (this.matchState === "ended") return;
     const kills = this.botManager.playerKills;
     const deaths = this.player.deaths;
-    const finalResult: MatchResult =
-      result ?? (kills > deaths ? "victory" : deaths > kills ? "defeat" : "draw");
+    const finalResult: MatchResult = result ?? (kills > deaths ? "victory" : deaths > kills ? "defeat" : "draw");
     this.matchState = "ended";
     this.scene.animationsEnabled = false;
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();

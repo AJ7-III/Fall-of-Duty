@@ -53,7 +53,13 @@ export function installDevTools(game: Game): DevApi {
       models: Record<WeaponId, { hands: Record<"left" | "right", { pose: HandPose }> }>;
       pivot: TransformNode;
     };
-    player: { position: { set(x: number, y: number, z: number): void }; yaw: number; pitch: number; invulnUntil: number; takeDamage(a: number, from: unknown): void };
+    player: {
+      position: { set(x: number, y: number, z: number): void };
+      yaw: number;
+      pitch: number;
+      invulnUntil: number;
+      takeDamage(a: number, from: unknown): void;
+    };
     time: { scale: number };
     scene: { meshes: Array<{ isEnabled(): boolean; isVisible: boolean; isReady(complete: boolean): boolean }> };
   };

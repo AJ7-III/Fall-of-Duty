@@ -172,7 +172,10 @@ export class ArmsRig {
       // Palm normal from the hand's own geometry: the finger axis crossed
       // with the knuckle line (index -> pinky) points out of the palm at bind
       const F = j(`${side}HandMiddle2`).getAbsolutePosition().subtract(middle.getAbsolutePosition()).normalize();
-      const W = j(`${side}HandPinky1`).getAbsolutePosition().subtract(j(`${side}HandIndex1`).getAbsolutePosition()).normalize();
+      const W = j(`${side}HandPinky1`)
+        .getAbsolutePosition()
+        .subtract(j(`${side}HandIndex1`).getAbsolutePosition())
+        .normalize();
       const palmW = side === "Right" ? Vector3.Cross(W, F) : Vector3.Cross(F, W);
       palmW.normalize();
 
@@ -256,6 +259,7 @@ export class ArmsRig {
       for (let t = 0; t + 2 < idx.length; t += 3) {
         if (isArm[idx[t]] && isArm[idx[t + 1]] && isArm[idx[t + 2]]) kept.push(idx[t], idx[t + 1], idx[t + 2]);
       }
+      mesh.makeGeometryUnique(); // clones share geometry: don't trim the bodies too
       mesh.setIndices(kept, n, true);
       mesh.material = soldierMaterialFor(this.scene, "player", false, mesh.material);
       mesh.isPickable = false;
