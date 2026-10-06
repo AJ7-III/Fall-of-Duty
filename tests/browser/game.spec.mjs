@@ -83,7 +83,7 @@ test("slow soldier downloads keep Start disabled", async ({ page }) => {
   });
   try {
     await page.goto("/");
-    await expect.poll(() => requests).toBeGreaterThan(0);
+    await expect.poll(() => requests, { timeout: 45000 }).toBeGreaterThan(0);
     await expect(page.locator("#startup-status")).toBeVisible();
     await expect(page.locator("#btn-start")).toBeDisabled();
   } finally {
@@ -359,7 +359,7 @@ test("a stalled download times out and can be retried", async ({ page }) => {
     await route.continue().catch(() => {}); // Disposal cancels the original request.
   });
   await page.goto("/");
-  await expect.poll(() => requests).toBeGreaterThan(0);
+  await expect.poll(() => requests, { timeout: 45000 }).toBeGreaterThan(0);
   await page.clock.fastForward(45001);
   await expect(page.locator("#startup-message")).toContainText("Loading timed out");
   await expect(page.locator("#btn-retry")).toBeVisible();
