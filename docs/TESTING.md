@@ -76,6 +76,9 @@ building. The deploy job requires the validated build job to succeed. The
 production test exercises the Pages base path, so missing prefixed asset URLs
 fail before publication.
 
+Manual runs on other branches validate the same checks and build, then skip
+publication. Only `main` can deploy to the protected GitHub Pages environment.
+
 Every build checks all generated JavaScript chunks: at most 4,000,000 bytes in
 total and no single chunk over 1,600,000 bytes before compression. This is a
 regression budget, not a frame-rate guarantee. Runtime Babylon imports use
