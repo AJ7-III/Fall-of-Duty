@@ -60,7 +60,9 @@ Chromium runs with a software WebGL backend to keep CI independent of a physical
 GPU. This validates rendering and behavior, not laptop battery life or hardware
 performance. Long deterministic gameplay scenarios advance the update loop
 without drawing each intermediate frame, then render the resulting scene.
-Firefox uses its browser renderer. Safari, touch controls and
+Firefox runs with an Xvfb display and Mesa software rendering on GitHub; its
+CI profile permits WebGL on that software driver. Local Firefox stays headless
+with its default graphics preferences. Safari, touch controls and
 real-device frame-rate measurements are outside the automated matrix.
 
 ## Deployment gate and bundle budget

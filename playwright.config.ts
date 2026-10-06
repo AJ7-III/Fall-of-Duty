@@ -20,7 +20,17 @@ export default defineConfig({
         launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
       },
     },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    {
+      name: "firefox",
+      use: {
+        ...devices["Desktop Firefox"],
+        launchOptions: {
+          // Linux runners need an X display for Mesa's software GL backend.
+          headless: !process.env.CI,
+          firefoxUserPrefs: process.env.CI ? { "webgl.force-enabled": true } : undefined,
+        },
+      },
+    },
   ],
   webServer: [
     {

@@ -27,9 +27,10 @@ jobs:
 
       - run: npm run check
 
-      - run: npm run test:browser -- --project=${{ matrix.browser }}
+      - run: xvfb-run -a npm run test:browser -- --project=${{ matrix.browser }}
         env:
           FOD_REAL_POINTER_LOCK: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
 
       - uses: actions/upload-artifact@v7
         if: failure()
