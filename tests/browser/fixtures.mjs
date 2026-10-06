@@ -69,7 +69,7 @@ export const test = base.extend({
 
 export { expect };
 
-export async function waitForStartup(page) {
+async function startupResult(page) {
   await page.waitForFunction(
     () => {
       const button = document.getElementById("btn-start");
@@ -78,6 +78,17 @@ export async function waitForStartup(page) {
     null,
     { timeout: 185000 }
   );
-  const message = await page.locator("#startup-message").textContent();
+  return page.locator("#startup-message").textContent();
+}
+
+export async function waitForStartup(page) {
+  const message = await startupResult(page);
   await expect(page.locator("#btn-start"), `Startup did not become ready: ${message}`).toBeEnabled({ timeout: 1000 });
+}
+
+export async function waitForStartupError(page) {
+  const message = await startupResult(page);
+  await expect(page.locator("#startup-status"), `Expected a startup error: ${message}`).toHaveAttribute("role", "alert", {
+    timeout: 1000,
+  });
 }

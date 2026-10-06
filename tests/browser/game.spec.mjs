@@ -1,4 +1,4 @@
-import { test, expect, waitForStartup } from "./fixtures.mjs";
+import { test, expect, waitForStartup, waitForStartupError } from "./fixtures.mjs";
 
 const ready = async (page) => {
   await waitForStartup(page);
@@ -149,7 +149,7 @@ test("failed soldier download offers a working retry", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/models/soldier.glb", (route) => route.fulfill({ status: 404, body: "Model unavailable" }));
   await page.goto("/");
-  await expect(page.locator("#startup-status")).toHaveAttribute("role", "alert");
+  await waitForStartupError(page);
   await expect(page.locator("#btn-start")).toBeDisabled();
   await expect(page.locator("#btn-retry")).toBeVisible();
   await page.unroute("**/models/soldier.glb");
@@ -163,7 +163,7 @@ test("failed soldier download offers a working retry", async ({ page }) => {
 test("failed game bundle reloads successfully on retry", async ({ page }) => {
   await page.route("**/src/engine/Game.ts*", (route) => route.abort("failed"));
   await page.goto("/");
-  await expect(page.locator("#startup-status")).toHaveAttribute("role", "alert");
+  await waitForStartupError(page);
   await expect(page.locator("#btn-start")).toBeDisabled();
   await page.unroute("**/src/engine/Game.ts*");
   await page.locator("#btn-retry").click();
@@ -173,7 +173,7 @@ test("failed game bundle reloads successfully on retry", async ({ page }) => {
 test("failed development-tools bundle reloads successfully on retry", async ({ page }) => {
   await page.route("**/src/engine/DevTools.ts*", (route) => route.abort("failed"));
   await page.goto("/");
-  await expect(page.locator("#startup-status")).toHaveAttribute("role", "alert");
+  await waitForStartupError(page);
   await expect(page.locator("#btn-start")).toBeDisabled();
   await page.unroute("**/src/engine/DevTools.ts*");
   await page.locator("#btn-retry").click();
@@ -196,7 +196,7 @@ test("unavailable WebGL shows a recoverable error", async ({ page }) => {
     };
   });
   await page.goto("/");
-  await expect(page.locator("#startup-status")).toHaveAttribute("role", "alert");
+  await waitForStartupError(page);
   await expect(page.locator("#btn-start")).toBeDisabled();
   await page.evaluate(() => {
     window.__blockWebGL = false;
