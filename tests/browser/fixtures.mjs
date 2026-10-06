@@ -76,7 +76,7 @@ export async function waitForStartup(page) {
       return (button && !button.disabled) || document.getElementById("startup-status")?.getAttribute("role") === "alert";
     },
     null,
-    { timeout: 50000 }
+    { timeout: 185000 }
   );
   const message = await page.locator("#startup-message").textContent();
   await expect(page.locator("#btn-start"), `Startup did not become ready: ${message}`).toBeEnabled({ timeout: 1000 });

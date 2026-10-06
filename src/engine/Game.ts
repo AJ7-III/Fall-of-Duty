@@ -69,6 +69,7 @@ export class Game {
   private lastHideCrosshair = false;
   private disposed = false;
   private assetsReady = false;
+  public readonly assetsLoaded: Promise<void>;
   public readonly ready: Promise<void>;
 
   constructor(canvasId: string) {
@@ -189,7 +190,8 @@ export class Game {
       whenSoldierModelReady(this.scene, () => this.startLoop());
       this.startLoop();
 
-      this.ready = soldierReady.then(async () => {
+      this.assetsLoaded = soldierReady;
+      this.ready = this.assetsLoaded.then(async () => {
         if (this.disposed) return;
         await this.scene.whenReadyAsync();
         if (!this.disposed) this.assetsReady = true;

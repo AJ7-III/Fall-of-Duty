@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/browser",
   testMatch: "*.spec.mjs",
-  timeout: 60000,
+  timeout: 240000, // Asset timeout + software-GPU warm-up + development-tool download.
   expect: { timeout: 15000 },
   fullyParallel: false,
   workers: 1, // GPU-heavy scenes compete when several browsers run together.

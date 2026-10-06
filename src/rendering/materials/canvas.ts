@@ -45,7 +45,7 @@ export function paintCanvas(size: number, paint: Painter): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
-  paint(canvas.getContext("2d") as CanvasRenderingContext2D, size);
+  paint(canvas.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D, size);
   return canvas;
 }
 
@@ -59,7 +59,11 @@ function tiling(tex: DynamicTexture): DynamicTexture {
 }
 
 export function makeCanvasTexture(scene: Scene, name: string, size: number, paint: Painter): DynamicTexture {
-  const tex = new DynamicTexture(name, { width: size, height: size }, scene, true);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  canvas.getContext("2d", { willReadFrequently: true });
+  const tex = new DynamicTexture(name, canvas, scene, true);
+  // Babylon may resize the backing canvas on WebGL 1 before painting.
   paint(tex.getContext() as CanvasRenderingContext2D, size);
   tex.update();
   return tiling(tex);

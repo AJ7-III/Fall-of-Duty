@@ -26,13 +26,20 @@ const startGame = async (): Promise<void> => {
   game = null;
   delete gameWindow.__game;
   setStartupState("loading", "Loading the yard and soldier…");
-  const timer = window.setTimeout(() => {
-    if (current !== generation) return;
-    generation++;
-    game?.dispose();
-    game = null;
-    setStartupState("error", "Loading timed out. Check your connection and try again.");
-  }, 45000);
+  let timer = 0;
+  const armTimeout = (delay: number, detail: string): void => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      if (current !== generation) return;
+      generation++;
+      game?.dispose();
+      game = null;
+      delete gameWindow.__game;
+      setStartupState("error", detail);
+    }, delay);
+  };
+  const downloadTimeout = "Loading timed out. Check your connection and try again.";
+  armTimeout(45000, downloadTimeout);
   try {
     if (typeof HTMLCanvasElement.prototype.requestPointerLock !== "function") {
       throw new Error("Mouse capture is unavailable. Open the game in desktop Chrome, Edge or Firefox.");
@@ -45,9 +52,19 @@ const startGame = async (): Promise<void> => {
     reloadOnRetry = false;
     const next = new Game("renderCanvas");
     game = next;
+    // Observe the combined promise now; asset failure can reject it before
+    // the separate asset phase below reaches the graphics await.
+    void next.ready.catch(() => {});
+    await next.assetsLoaded;
+    if (current !== generation) return;
+    // Shader compilation can be much slower on software or integrated GPUs.
+    // Keep stalled downloads bounded without cancelling graphics warm-up.
+    setStartupState("loading", "Preparing graphics…");
+    armTimeout(90000, "Graphics initialization timed out. Close busy tabs and try again.");
     await next.ready;
     if (current !== generation) return;
     if (import.meta.env.DEV) {
+      armTimeout(45000, downloadTimeout);
       reloadOnRetry = true;
       const { installDevTools } = await import("./engine/DevTools");
       if (current !== generation) return;

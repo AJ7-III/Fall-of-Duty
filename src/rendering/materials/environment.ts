@@ -16,7 +16,7 @@ type FacePainter = (ctx: CanvasRenderingContext2D, s: number) => void;
 function paintFace(paint: FacePainter): Uint8Array {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = SIZE;
-  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D;
   paint(ctx, SIZE);
   return new Uint8Array(ctx.getImageData(0, 0, SIZE, SIZE).data.buffer);
 }

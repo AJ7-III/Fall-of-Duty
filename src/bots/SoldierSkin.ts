@@ -84,7 +84,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 function detailLayer(size: number, recolor: Recolor): Uint8ClampedArray {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D;
   ctx.fillStyle = "#808080";
   ctx.fillRect(0, 0, size, size);
   for (let i = 0; i < 90; i++) {
@@ -110,8 +110,7 @@ function detailLayer(size: number, recolor: Recolor): Uint8ClampedArray {
     d[i + 1] += n;
     d[i + 2] += n;
   }
-  ctx.putImageData(img, 0, 0);
-  return ctx.getImageData(0, 0, size, size).data;
+  return d;
 }
 
 export interface SoldierSkinTextures {

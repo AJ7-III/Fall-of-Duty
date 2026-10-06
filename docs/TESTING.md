@@ -41,6 +41,10 @@ screenshots and startup diagnostics as a seven-day artifact. Tests cover:
 - The production build hosted at `/Fall-of-Duty/`, including firing, reloading
   and replay, with no development console tools exposed.
 
+Startup bounds asset and module downloads at 45 seconds, then allows up to
+90 seconds for graphics preparation. The test budget covers both phases so
+software rendering can finish without hiding the stalled-download check.
+
 The suite launches a development server on port 3001 and a production preview
 on port 4173. Both ports must be available in CI. Local runs can reuse an existing
 server; stop it if it serves a different checkout. Screenshots and traces from
