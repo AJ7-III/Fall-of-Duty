@@ -84,6 +84,11 @@ specific module paths; lint prevents adding the broad core barrel back.
 Both build commands copy the project license, asset notices, Babylon package
 licenses and upstream attribution notice into `dist/` for deployment.
 
+Babylon core and loaders are pinned together at 9.29.0. This includes the
+upstream RGBD texture cleanup fix needed when startup fails while a texture
+shader is still compiling. The failed-model retry case checks for uncaught
+errors during that cleanup and the next successful start.
+
 To update the README screenshot intentionally:
 
 ```bash

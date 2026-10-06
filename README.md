@@ -75,7 +75,7 @@ The game includes one map and an offline bot match, with one opponent by default
 
 Death choreography grounds the body on a horizontal plane at its starting height; nearby props can still intersect the fallen body.
 
-The start screen waits for the soldier model and initial scene shaders before enabling Start. If a download or graphics initialization fails, it shows an error and a **Retry Loading** button. Loading times out after 45 seconds. Retry rebuilds the scene, or reloads the page if the game bundle failed to download.
+The start screen waits for the soldier model and initial scene shaders before enabling Start. If a download or graphics initialization fails, it shows an error and a **Retry Loading** button. Downloads time out after 45 seconds; graphics preparation gets a separate 90-second limit for slower GPUs. Retry rebuilds the scene, or reloads the page if the game bundle failed to download.
 
 If mouse capture is unavailable, use a supported desktop browser. If WebGL initialization fails, check browser hardware acceleration. If capture is temporarily blocked after Escape, click Resume again after the browser cooldown.
 
