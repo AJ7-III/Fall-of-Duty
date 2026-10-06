@@ -144,6 +144,8 @@ export class Pistol implements Weapon {
   // Respawn refill bypasses the reload timeline, so release the slide here
   public onRefill(): void {
     this.slideLocked = false;
+    this.slideKick = 0;
+    this.fireCooldown = 0;
   }
 
   private fire(scene: Scene, cameraRig: CameraRig, effects: Effects): void {

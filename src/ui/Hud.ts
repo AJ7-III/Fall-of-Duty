@@ -19,6 +19,7 @@ export class Hud {
   private lastVignette: number = -1;
   private lastDamageDir: number = -1;
   private everLocked = false; // after the first capture, unlocks open the pause menu instead
+  private listeners = new AbortController();
 
   constructor(canvas: HTMLCanvasElement) {
     this.ammoClipEl = document.getElementById("ammo-clip");
@@ -30,18 +31,26 @@ export class Hud {
 
     if (this.promptEl) {
       this.promptEl.innerText = "Click Screen to Capture Mouse";
-      this.promptEl.addEventListener("click", () => {
-        // Pointer lock can reject during the browser's post-Escape cooldown
-        try {
-          const result = canvas.requestPointerLock() as unknown;
-          if (result instanceof Promise) {
-            result.catch(() => {});
+      this.promptEl.addEventListener(
+        "click",
+        () => {
+          // Pointer lock can reject during the browser's post-Escape cooldown
+          try {
+            const result = canvas.requestPointerLock() as unknown;
+            if (result instanceof Promise) {
+              result.catch(() => {});
+            }
+          } catch {
+            // ignore — clicking again after the cooldown will succeed
           }
-        } catch {
-          // ignore — clicking again after the cooldown will succeed
-        }
-      });
+        },
+        { signal: this.listeners.signal }
+      );
     }
+  }
+
+  public dispose(): void {
+    this.listeners.abort();
   }
 
   // Pause/end overlays own the screen — drop any center prompt under them

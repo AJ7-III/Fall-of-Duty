@@ -16,7 +16,7 @@ async function markingsMask(scene: Scene, albedo: BaseTexture): Promise<DynamicT
   const size = albedo.getSize();
   if (!size.width || !size.height) return null;
   const pixels = (await albedo.readPixels()) as Uint8Array | null;
-  if (!pixels) return null;
+  if (!pixels || scene.isDisposed) return null;
   // readPixels hands rows back bottom-up (v = 0 first); upload them
   // unflipped so the mask lands in the same orientation as the source
   const tex = new DynamicTexture(

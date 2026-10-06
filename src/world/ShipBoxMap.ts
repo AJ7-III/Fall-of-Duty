@@ -24,6 +24,8 @@ import type { Target } from "./Target";
 import { CarWreck } from "./CarWreck";
 import { TruckWreck } from "./TruckWreck";
 import { PlayerController } from "../player/PlayerController";
+import { Settings } from "../ui/Settings";
+import type { GraphicsQuality } from "../ui/Settings";
 
 // Ship Box is a tight container yard, scaled off the overhead reference: a 32m
 // walled square (x/z -16..16) where the four center blocks leave only
@@ -55,6 +57,7 @@ export class ShipBoxMap {
   // The rain volume tracks the player so a modest particle budget always
   // fills the sky overhead (update() copies the camera x/z in here)
   private rainAnchor = new Vector3(0, 11, 0);
+  private rain: ParticleSystem | null = null;
 
   public targets: Target[] = [];
 
@@ -236,6 +239,21 @@ export class ShipBoxMap {
       else this.shadowGen.removeShadowCaster(mesh, false);
     }
     this.applyShadowMode();
+  }
+
+  public setGraphicsQuality(quality: GraphicsQuality): void {
+    this.setDynamicShadows(quality === "high");
+    if (!this.rain) return;
+    const emitRate = quality === "performance" ? 650 : 2600;
+    if (this.rain.emitRate === emitRate) return;
+    this.rain.emitRate = emitRate;
+    // Shed the previous tier's live particles immediately, including when
+    // the quality picker is used while paused.
+    this.rain.reset();
+  }
+
+  public setPaused(paused: boolean): void {
+    if (this.rain) this.rain.paused = paused;
   }
 
   private applyShadowMode(): void {
@@ -888,6 +906,7 @@ export class ShipBoxMap {
   // meters/second and lifetimes read as seconds at any frame rate.
   private createRain(): void {
     const rain = new ParticleSystem("rain", 3000, this.scene);
+    this.rain = rain;
     rain.particleTexture = this.materials.createRainStreakTexture();
     rain.emitter = this.rainAnchor;
     rain.minEmitBox = new Vector3(-11, 0, -11);
@@ -899,7 +918,7 @@ export class ShipBoxMap {
     rain.updateSpeed = 1 / 60;
     rain.minLifeTime = 1.0;
     rain.maxLifeTime = 1.1;
-    rain.emitRate = 2600;
+    rain.emitRate = Settings.getGraphicsQuality() === "performance" ? 650 : 2600;
     rain.billboardMode = ParticleSystem.BILLBOARDMODE_STRETCHED;
     rain.minScaleX = 0.025; // streak width (m)
     rain.maxScaleX = 0.04;

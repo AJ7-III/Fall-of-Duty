@@ -10,7 +10,17 @@ export class Time {
   private fpsAccumulator: number = 0;
 
   constructor() {
+    this.reset();
+  }
+
+  // Keep simulation time/slow-motion, but discard time spent in a menu or
+  // hidden tab so the first resumed frame and FPS sample cannot jump.
+  public reset(): void {
     this.lastTime = performance.now();
+    this.deltaTime = 0;
+    this.fps = 0;
+    this.fpsFrameCount = 0;
+    this.fpsAccumulator = 0;
   }
 
   public update(): void {

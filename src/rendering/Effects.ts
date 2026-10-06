@@ -13,6 +13,7 @@ import {
 
 export class Effects {
   private audioCtx: AudioContext | null = null;
+  private audioListeners = new AbortController();
   private hitMarkerEl: HTMLElement | null = null;
   private hitMarkerTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -86,6 +87,7 @@ export class Effects {
   // Gunshot noise — generated once, reused for every shot (the buffer is
   // 24k random samples; rebuilding it per trigger pull is pure GC churn)
   private noiseBuffer: AudioBuffer | null = null;
+  private paused = false;
 
   constructor(scene: Scene) {
     this.hitMarkerEl = document.getElementById("hit-marker");
@@ -273,7 +275,7 @@ export class Effects {
     }
 
     scene.onBeforeRenderObservable.add(() => {
-      this.updateTransients(scene.getEngine().getDeltaTime() / 1000);
+      if (!this.paused) this.updateTransients(Math.min(scene.getEngine().getDeltaTime() / 1000, 0.1));
     });
 
     // Bullet-hole pool: a doubly-sided octagon disc matching the silhouette
@@ -296,11 +298,21 @@ export class Effects {
     const initAudio = () => {
       const legacy = (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       this.audioCtx = new (window.AudioContext || legacy)();
-      window.removeEventListener("click", initAudio);
-      window.removeEventListener("keydown", initAudio);
+      this.audioListeners.abort();
     };
-    window.addEventListener("click", initAudio);
-    window.addEventListener("keydown", initAudio);
+    window.addEventListener("click", initAudio, { signal: this.audioListeners.signal });
+    window.addEventListener("keydown", initAudio, { signal: this.audioListeners.signal });
+  }
+
+  public dispose(): void {
+    this.paused = true;
+    this.audioListeners.abort();
+    this.stopRotorLoop();
+    if (this.hitMarkerTimeout !== null) clearTimeout(this.hitMarkerTimeout);
+    this.hitMarkerTimeout = null;
+    if (this.audioCtx) void this.audioCtx.close().catch(() => {});
+    this.audioCtx = null;
+    this.noiseBuffer = null;
   }
 
   // Visual Effects
@@ -332,6 +344,10 @@ export class Effects {
     tracer.mesh.scaling.set(1, length, 1);
     tracer.mesh.setEnabled(true);
     tracer.life = Effects.TRACER_TIME;
+  }
+
+  public setPaused(paused: boolean): void {
+    this.paused = paused;
   }
 
   // Blooms flashes outward while they fade and burns down the tracers;
@@ -473,7 +489,7 @@ export class Effects {
   // Audio Synthesis via Web Audio API (100% legal, 100% asset-free)
   private getAudioContext(): AudioContext | null {
     if (this.audioCtx && this.audioCtx.state === "suspended") {
-      this.audioCtx.resume();
+      void this.audioCtx.resume().catch(() => {});
     }
     return this.audioCtx;
   }

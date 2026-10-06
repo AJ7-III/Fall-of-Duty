@@ -117,19 +117,24 @@ export interface SoldierSkinTextures {
   orm: DynamicTexture;
 }
 
-const cache = new Map<string, Promise<SoldierSkinTextures>>();
+const cache = new WeakMap<Scene, Map<SoldierTint, Promise<SoldierSkinTextures>>>();
 
 // Reads the glTF albedo back from the GPU (the loader already uploaded it),
 // recolours it and packs a matching roughness/metal map. Cached per scene
 // and faction; bodies swap the textures in when the promise resolves.
 export function soldierSkinTextures(scene: Scene, tint: SoldierTint, source: BaseTexture): Promise<SoldierSkinTextures> {
-  const key = `${scene.uid}:${tint}`;
-  const existing = cache.get(key);
+  let textures = cache.get(scene);
+  if (!textures) {
+    textures = new Map();
+    cache.set(scene, textures);
+  }
+  const existing = textures.get(tint);
   if (existing) return existing;
-  const job = buildTextures(scene, tint, source).finally(() => {
-    if (scene.isDisposed) cache.delete(key);
+  const job = buildTextures(scene, tint, source).catch((error) => {
+    textures.delete(tint);
+    throw error;
   });
-  cache.set(key, job);
+  textures.set(tint, job);
   return job;
 }
 
@@ -138,6 +143,7 @@ async function buildTextures(scene: Scene, tint: SoldierTint, source: BaseTextur
   const w = size.width;
   const h = size.height;
   const src = (await source.readPixels()) as Uint8Array;
+  if (scene.isDisposed) throw new Error("Soldier skin scene was disposed during readback");
   const recolor = RECOLOR[tint];
   const detail = detailLayer(w, recolor);
 

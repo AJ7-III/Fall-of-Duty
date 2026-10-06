@@ -26,7 +26,7 @@ export interface MatchUICallbacks {
 const QUALITY_DESC: Record<GraphicsQuality, string> = {
   high: "Native resolution · 4× MSAA · ambient occlusion · sharpen",
   balanced: "1.5× resolution cap · 2× MSAA + FXAA · sharpen",
-  performance: "1× resolution · FXAA · for laptops and integrated GPUs",
+  performance: "60 FPS cap · lighter effects · reduced rain · lower power use",
 };
 
 const WEAPON_NAMES: Record<string, string> = {
@@ -91,6 +91,9 @@ export class MatchUI {
   private qualityDescs = Array.from(document.querySelectorAll<HTMLElement>("[data-quality-desc]"));
   private toastEl = document.getElementById("hud-toast");
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  private feedTimers = new Set<ReturnType<typeof setTimeout>>();
+  private listeners = new AbortController();
+  private unsubscribe: Array<() => void> = [];
 
   private lastYou = -1;
   private lastEnemy = -1;
@@ -126,59 +129,83 @@ export class MatchUI {
   constructor(effects: Effects, getPlayerWeaponId: () => string, callbacks: MatchUICallbacks) {
     this.effects = effects;
     this.getPlayerWeaponId = getPlayerWeaponId;
-    document.getElementById("btn-start")?.addEventListener("click", () => this.startFromMenu(callbacks.onStart));
-    document.getElementById("btn-resume")?.addEventListener("click", () => callbacks.onResume());
-    document.getElementById("btn-end")?.addEventListener("click", () => callbacks.onEndMatch());
-    document.getElementById("btn-again")?.addEventListener("click", () => callbacks.onPlayAgain());
+    const options = { signal: this.listeners.signal };
+    document.getElementById("btn-start")?.addEventListener("click", () => this.startFromMenu(callbacks.onStart), options);
+    document.getElementById("btn-resume")?.addEventListener("click", () => callbacks.onResume(), options);
+    document.getElementById("btn-end")?.addEventListener("click", () => callbacks.onEndMatch(), options);
+    document.getElementById("btn-again")?.addEventListener("click", () => callbacks.onPlayAgain(), options);
 
-    this.usernameInput?.addEventListener("input", () => this.renderUsernamePreview());
-    this.usernameInput?.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter") return;
-      event.preventDefault();
-      this.startFromMenu(callbacks.onStart);
-    });
+    this.usernameInput?.addEventListener("input", () => this.renderUsernamePreview(), options);
+    this.usernameInput?.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        this.startFromMenu(callbacks.onStart);
+      },
+      options
+    );
     this.renderUsernamePreview();
 
-    this.startDiffSlider?.addEventListener("input", () => {
-      const level = parseInt(this.startDiffSlider!.value, 10);
-      this.renderDifficulty(level);
-      callbacks.onDifficultyChange(level);
-    });
+    this.startDiffSlider?.addEventListener(
+      "input",
+      () => {
+        const level = parseInt(this.startDiffSlider!.value, 10);
+        this.renderDifficulty(level);
+        callbacks.onDifficultyChange(level);
+      },
+      options
+    );
 
-    this.diffSlider?.addEventListener("input", () => {
-      const level = parseInt(this.diffSlider!.value, 10);
-      this.renderDifficulty(level);
-      callbacks.onDifficultyChange(level);
-    });
+    this.diffSlider?.addEventListener(
+      "input",
+      () => {
+        const level = parseInt(this.diffSlider!.value, 10);
+        this.renderDifficulty(level);
+        callbacks.onDifficultyChange(level);
+      },
+      options
+    );
 
     for (const el of this.trashToggleEls) {
-      el?.addEventListener("click", () => {
-        this.trashTalkMuted = !this.trashTalkMuted;
-        Settings.setTrashTalkMuted(this.trashTalkMuted);
-        this.renderTrashTalk();
-        callbacks.onToggleTrashTalk(this.trashTalkMuted);
-      });
+      el?.addEventListener(
+        "click",
+        () => {
+          this.trashTalkMuted = !this.trashTalkMuted;
+          Settings.setTrashTalkMuted(this.trashTalkMuted);
+          this.renderTrashTalk();
+          callbacks.onToggleTrashTalk(this.trashTalkMuted);
+        },
+        options
+      );
     }
     this.renderTrashTalk();
 
     for (const picker of this.qualityPickers) {
-      picker.addEventListener("click", (event) => {
-        const btn = (event.target as HTMLElement).closest<HTMLElement>("[data-quality]");
-        const quality = btn?.dataset.quality as GraphicsQuality | undefined;
-        if (!quality) return;
-        this.renderGraphics(quality);
-        callbacks.onGraphicsChange(quality);
-      });
+      picker.addEventListener(
+        "click",
+        (event) => {
+          const btn = (event.target as HTMLElement).closest<HTMLElement>("[data-quality]");
+          const quality = btn?.dataset.quality as GraphicsQuality | undefined;
+          if (!quality) return;
+          this.renderGraphics(quality);
+          callbacks.onGraphicsChange(quality);
+        },
+        options
+      );
     }
     this.renderGraphics(Settings.getGraphicsQuality());
 
-    MatchEvents.on("kill", (e) => this.onKill(e.headshot, e.cause));
-    MatchEvents.on("playerDeath", (e) => this.onPlayerDeath(e.weaponId, e.self ?? false));
+    this.unsubscribe.push(
+      MatchEvents.on("kill", (e) => this.onKill(e.headshot, e.cause)),
+      MatchEvents.on("playerDeath", (e) => this.onPlayerDeath(e.weaponId, e.self ?? false))
+    );
   }
 
   // ---------------------------------------------------------------- graphics
 
   public renderGraphics(quality: GraphicsQuality): void {
+    this.startPreview.setQuality(quality);
     for (const picker of this.qualityPickers) {
       for (const btn of picker.querySelectorAll<HTMLElement>("[data-quality]")) {
         btn.setAttribute("aria-checked", btn.dataset.quality === quality ? "true" : "false");
@@ -291,7 +318,11 @@ export class MatchUI {
     row.append(leftEl, weaponEl, rightEl);
     this.feedEl.prepend(row);
     while (this.feedEl.children.length > 5) this.feedEl.lastElementChild?.remove();
-    setTimeout(() => row.remove(), 5000);
+    const timer = setTimeout(() => {
+      this.feedTimers.delete(timer);
+      row.remove();
+    }, 5000);
+    this.feedTimers.add(timer);
   }
 
   // ----------------------------------------------------------- pause + end
@@ -426,6 +457,7 @@ export class MatchUI {
   }
 
   public resetMatch(): void {
+    this.clearTimers();
     this.streak = 0;
     this.bestStreak = 0;
     this.headshots = 0;
@@ -434,6 +466,8 @@ export class MatchUI {
     this.lastEnemy = -1;
     this.setScore(0, 0);
     if (this.feedEl) this.feedEl.innerHTML = "";
+    if (this.pointsEl) this.pointsEl.innerHTML = "";
+    this.toastEl?.classList.add("hidden");
     this.bannerEl?.classList.add("hidden");
     this.streakEl?.classList.add("hidden");
     this.cancelCountUps();
@@ -443,7 +477,19 @@ export class MatchUI {
   }
 
   public dispose(): void {
+    this.listeners.abort();
+    for (const off of this.unsubscribe) off();
+    this.unsubscribe.length = 0;
+    this.clearTimers();
+    this.cancelCountUps();
     this.startPreview.dispose();
+  }
+
+  private clearTimers(): void {
+    if (this.toastTimer !== null) clearTimeout(this.toastTimer);
+    this.toastTimer = null;
+    for (const timer of this.feedTimers) clearTimeout(timer);
+    this.feedTimers.clear();
   }
 
   private renderTrashTalk(): void {

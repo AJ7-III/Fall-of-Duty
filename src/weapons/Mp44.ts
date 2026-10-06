@@ -129,6 +129,12 @@ export class Mp44 implements Weapon {
     this.state = this.clipAmmo === 0 ? "empty" : "idle";
   }
 
+  public onRefill(): void {
+    this.fireCooldown = 0;
+    this.boltKick = 0;
+    this.reloadStartedEmpty = false;
+  }
+
   private fire(scene: Scene, cameraRig: CameraRig, effects: Effects): void {
     this.clipAmmo--;
     this.fireCooldown = this.config.fireInterval;

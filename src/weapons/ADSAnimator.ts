@@ -44,6 +44,11 @@ export class ADSAnimator {
     return this.currentFrame / this.maxFrame;
   }
 
+  public reset(): void {
+    this.currentFrame = 0;
+    this.writeInterpolatedState();
+  }
+
   public getInterpolatedState(): ADSFrame {
     return this.cachedState;
   }

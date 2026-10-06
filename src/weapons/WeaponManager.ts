@@ -50,7 +50,10 @@ export class WeaponManager {
     if (allowInput && alive && this.switchPhase === "none" && input.isKeyPressed("KeyX")) {
       this.switchPhase = "lower";
       this.switchTimer = 0;
-      this.getActiveWeapon().cancelReload();
+      const previous = this.getActiveWeapon();
+      previous.cancelReload();
+      previous.adsAnimator.reset();
+      previous.isAiming = false;
       effects.playWeaponSwitchSound();
     }
 
@@ -80,11 +83,19 @@ export class WeaponManager {
 
   // Player respawn: Fall of Duty hands you a fresh loadout
   public refillAll(): void {
+    this.switchPhase = "none";
+    this.switchTimer = 0;
+    this.firedThisFrame = false;
     for (const weapon of this.weapons) {
       weapon.cancelReload();
       weapon.clipAmmo = weapon.config.magSize;
       weapon.reserveAmmo = weapon.config.maxReserveAmmo;
       weapon.state = "idle";
+      weapon.timer = 0;
+      weapon.reloadTotal = 0;
+      weapon.isAiming = false;
+      weapon.visualKickZ = 0;
+      weapon.adsAnimator.reset();
       weapon.onRefill?.();
     }
   }

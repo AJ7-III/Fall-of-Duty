@@ -44,6 +44,7 @@ export class Killstreaks {
 
   private hintEl: HTMLElement | null;
   private lastHint = "";
+  private unsubscribe: Array<() => void> = [];
 
   private input: Input;
   private player: PlayerController;
@@ -75,13 +76,15 @@ export class Killstreaks {
     this.apache = new Apache(scene);
     this.buildJets(scene);
 
-    MatchEvents.on("kill", () => this.onKill());
-    MatchEvents.on("playerDeath", () => {
-      this.streak = 0;
-      this.laptop.close(); // killed mid-mark: the laptop drops, the strike stays earned
-      if (this.transmitter.isOut && !this.apache.active) this.apacheReady = true;
-      this.transmitter.forceClose();
-    });
+    this.unsubscribe.push(MatchEvents.on("kill", () => this.onKill()));
+    this.unsubscribe.push(
+      MatchEvents.on("playerDeath", () => {
+        this.streak = 0;
+        this.laptop.close(); // killed mid-mark: the laptop drops, the strike stays earned
+        if (this.transmitter.isOut && !this.apache.active) this.apacheReady = true;
+        this.transmitter.forceClose();
+      })
+    );
   }
 
   public get uavActive(): boolean {
@@ -328,6 +331,12 @@ export class Killstreaks {
     this.effects.setRotorMuted(paused);
   }
 
+  public dispose(): void {
+    this.onMatchEnd();
+    for (const off of this.unsubscribe) off();
+    this.unsubscribe.length = 0;
+  }
+
   // End screen: silence the rotor and give camera control back
   public onMatchEnd(): void {
     this.laptop.forceClose();
@@ -340,6 +349,7 @@ export class Killstreaks {
 
   public resetMatch(): void {
     this.onMatchEnd();
+    this.setPaused(false);
     this.streak = 0;
     this.uavUntil = -1;
     this.airstrikeReady = false;

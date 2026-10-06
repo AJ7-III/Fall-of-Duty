@@ -13,7 +13,7 @@ A browser-native 1v1 first-person shooter. You spawn in Ship Box, a rain-soaked 
 - Killstreaks: UAV radar at three, an airstrike laptop at five, an Apache gunship at seven
 - A staged death: time slows, the body collapses in one of three ways, and a camera that never clips into a wall pulls back to watch
 - Physically based rendering throughout: every painted surface carries a normal map and an occlusion/roughness map, rain leaves a sheen with standing water in the low spots, and a painted, prefiltered environment feeds every reflection from wet steel to chrome
-- Native-resolution rendering with MSAA, ambient occlusion, a sharpen pass and colour grading, three quality tiers (the high tier gives the soldiers real shadows), and an automatic step-down when the frame rate can't hold
+- Three graphics tiers, from native-resolution MSAA and ambient occlusion to a lighter, 60 FPS Fast mode, with automatic step-down when the frame rate can't hold
 - Custom callsign, a trash-talking rival with voice lines (mutable in the settings), kill feed, streak callouts, an end-of-match report
 
 ## Controls
@@ -48,9 +48,10 @@ Other scripts:
 | --- | --- |
 | `npm run dev` | Dev server without opening a browser |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Gameplay and lifecycle regression tests |
 | `npm run lint` | ESLint over the source and config |
 | `npm run format` | Prettier over the source, styles, HTML and config |
-| `npm run check` | Typecheck, lint and format check together (what CI runs) |
+| `npm run check` | Typecheck, regression tests, lint and format check together (what CI runs) |
 
 Pushes to `main` run CI and deploy the build to GitHub Pages.
 
@@ -60,9 +61,13 @@ Pick a tier on the start screen or in the pause menu:
 
 - **High**: native device pixels (capped at 2x), 4x MSAA, screen-space ambient occlusion, sharpening
 - **Balanced**: 1.5x pixel cap, 2x MSAA plus FXAA, sharpening
-- **Fast**: 1x pixels, FXAA only
+- **Fast**: up to 1x pixels, capped at a 1920×1080 pixel budget on larger windows; 60 FPS cap; FXAA and colour grading without bloom, film grain, chromatic aberration or sharpening; 75% less rain; radar redraws at up to 20 Hz. Movement, aiming, weapons and enemy logic still update every gameplay frame.
 
-If the measured frame rate stays under 45 for a few seconds the game drops one tier on its own and tells you.
+If the measured frame rate averages under 45 FPS for five seconds of play, the game drops one tier and tells you. It skips two seconds of samples after starting, resuming or changing quality to allow shaders to settle. It can step down again if the next tier still struggles; automatic changes do not overwrite your saved preference.
+
+The main scene stops rendering once the start, pause or end menu's background is ready, and redraws after resizing, loading assets or changing graphics. Hidden tabs stop rendering and pause a live match; use Resume when you return. The start-screen operator preview is limited to 15 FPS in Fast and 30 FPS otherwise, and stops when hidden.
+
+For casual play with lower resource use, choose **Fast** and keep the default one opponent. A smaller browser window can further reduce the rendering cost. For local play without the development tooling, run `npm run build` followed by `npm run preview`.
 
 ## How the code is laid out
 

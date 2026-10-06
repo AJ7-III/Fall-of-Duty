@@ -22,19 +22,24 @@ class MatchEventBus {
   // safety at the call sites
   private handlers = new Map<keyof EventMap, Array<(e: never) => void>>();
 
-  public on<K extends keyof EventMap>(type: K, fn: (e: EventMap[K]) => void): void {
+  public on<K extends keyof EventMap>(type: K, fn: (e: EventMap[K]) => void): () => void {
     let list = this.handlers.get(type);
     if (!list) {
       list = [];
       this.handlers.set(type, list);
     }
-    list.push(fn as (e: never) => void);
+    const listener = fn as (e: never) => void;
+    list.push(listener);
+    return () => {
+      const index = list.indexOf(listener);
+      if (index >= 0) list.splice(index, 1);
+    };
   }
 
   public emit<K extends keyof EventMap>(type: K, e: EventMap[K]): void {
     const list = this.handlers.get(type) as Array<(e: EventMap[K]) => void> | undefined;
     if (!list) return;
-    for (const fn of list) fn(e);
+    for (const fn of [...list]) fn(e);
   }
 
   public clear(): void {

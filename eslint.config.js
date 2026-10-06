@@ -34,14 +34,14 @@ export default defineConfig([
     languageOptions: { globals: { ...globals.browser } },
   },
 
-  // Vite config and this file run under Node.
+  // Config files and regression tests run under Node.
   {
-    files: ["vite.config.ts", "eslint.config.js"],
+    files: ["vite.config.ts", "eslint.config.js", "tests/**/*.mjs"],
     languageOptions: { globals: { ...globals.node } },
   },
 
   {
-    files: ["eslint.config.js"],
+    files: ["eslint.config.js", "tests/**/*.mjs"],
     extends: [js.configs.recommended],
   },
 ]);

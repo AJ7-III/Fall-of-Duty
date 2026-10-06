@@ -217,7 +217,9 @@ export function soldierMaterialFor(scene: Scene, tint: SoldierTint, isVisor: boo
         mat.roughness = 1;
         mat.freeze();
       })
-      .catch((err) => console.warn("soldier skin recolour skipped:", err));
+      .catch((err) => {
+        if (!scene.isDisposed) console.warn("soldier skin recolour skipped:", err);
+      });
   }
   mat.freeze();
   return mat;

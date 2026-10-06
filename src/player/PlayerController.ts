@@ -99,6 +99,7 @@ export class PlayerController {
     cos: number;
     sin: number;
   }> = [];
+  private static collisionStepPosition = new Vector3();
 
   constructor(input: Input, cameraRig: CameraRig) {
     this.input = input;
@@ -135,6 +136,27 @@ export class PlayerController {
   // The player and every bot move through this one function, so bots obey
   // exactly the movement physics the player does.
   public static moveAndCollide(
+    prevPos: Vector3,
+    velocity: Vector3,
+    deltaTime: number,
+    height: number,
+    radius: number,
+    nextPos: Vector3
+  ): boolean {
+    // Resolve long frames in short steps. A single nearest-face push can
+    // otherwise place a fast-moving body on the far side of a thin wall.
+    const steps = Math.max(1, Math.ceil((Math.hypot(velocity.x, velocity.z) * deltaTime) / Math.max(radius * 0.5, 0.01)));
+    if (steps === 1) return this.resolveMovement(prevPos, velocity, deltaTime, height, radius, nextPos);
+    const stepPosition = this.collisionStepPosition.copyFrom(prevPos);
+    let grounded = false;
+    for (let i = 0; i < steps; i++) {
+      grounded = this.resolveMovement(stepPosition, velocity, deltaTime / steps, height, radius, nextPos);
+      stepPosition.copyFrom(nextPos);
+    }
+    return grounded;
+  }
+
+  private static resolveMovement(
     prevPos: Vector3,
     velocity: Vector3,
     deltaTime: number,
@@ -219,7 +241,7 @@ export class PlayerController {
 
       if (xzOverlap) {
         // Falling down onto the obstacle
-        if (velocity.y < 0 && prevPos.y >= obs.maxY - 0.05 && nextPos.y < obs.maxY) {
+        if (velocity.y <= 0 && prevPos.y >= obs.maxY - 0.05 && nextPos.y <= obs.maxY) {
           nextPos.y = obs.maxY;
           velocity.y = 0;
           onGround = true;
@@ -273,6 +295,8 @@ export class PlayerController {
     this.pitch = 0;
     this.health = PlayerController.MAX_HEALTH;
     this.isDead = false;
+    this.damageFlash = 0;
+    this.cameraRig.reset();
     this.resetStance();
     this.invulnUntil = this.gameTime + 1.0;
     this.justRespawned = true;
@@ -288,6 +312,7 @@ export class PlayerController {
     this.pitch = 0;
     this.health = PlayerController.MAX_HEALTH;
     this.isDead = false;
+    this.cameraRig.reset();
     this.resetStance();
     this.deaths = 0;
     this.damageFlash = 0;
@@ -304,6 +329,9 @@ export class PlayerController {
   }
 
   private resetStance(): void {
+    this.isGrounded = true;
+    this.isSprinting = false;
+    this.lookLocked = false;
     this.crouchToggled = false;
     this.isCrouching = false;
     this.isProne = false;

@@ -90,4 +90,17 @@ export class CameraRig {
     // Babylon camera FOV is in radians, so convert from degrees
     this.camera.fov = (fovInDegrees * Math.PI) / 180;
   }
+
+  public reset(): void {
+    this.recoilPitch = 0;
+    this.recoilYaw = 0;
+    this.recoilKickback = 0;
+    this.swayTime = 0;
+    this.scopeSwayTime = 0;
+    this.bobTime = 0;
+    this.scopeSwayYaw = 0;
+    this.scopeSwayPitch = 0;
+    this.swayOffset.setAll(0);
+    this.bobOffset.setAll(0);
+  }
 }

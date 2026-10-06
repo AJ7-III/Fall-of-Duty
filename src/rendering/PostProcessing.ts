@@ -9,7 +9,7 @@ import type { GraphicsQuality } from "../ui/Settings";
 //
 //   high        native device pixels (capped at 2x), 4x MSAA, SSAO, sharpen
 //   balanced    1.5x pixels max, 2x MSAA + FXAA, sharpen
-//   performance 1x pixels, FXAA only
+//   performance 1x pixels / 1080p pixel budget, FXAA, 60 FPS, no cosmetic passes
 //
 // FXAA alone (the old setup) softens every texel; MSAA resolves geometry
 // edges without touching texture detail, and the sharpen pass restores the
@@ -21,12 +21,14 @@ interface Tier {
   fxaa: boolean;
   ssao: boolean;
   sharpen: number;
+  maxPixels?: number;
+  maxFps?: number;
 }
 
 const TIERS: Record<GraphicsQuality, Tier> = {
   high: { maxPixelRatio: 2, samples: 4, fxaa: false, ssao: true, sharpen: 0.32 },
   balanced: { maxPixelRatio: 1.5, samples: 2, fxaa: true, ssao: false, sharpen: 0.28 },
-  performance: { maxPixelRatio: 1, samples: 1, fxaa: true, ssao: false, sharpen: 0.2 },
+  performance: { maxPixelRatio: 1, samples: 1, fxaa: true, ssao: false, sharpen: 0, maxPixels: 1920 * 1080, maxFps: 60 },
 };
 
 const TIER_ORDER: GraphicsQuality[] = ["high", "balanced", "performance"];
@@ -38,7 +40,7 @@ export class PostProcessing {
   private pipeline: DefaultRenderingPipeline;
   private ssao: SSAO2RenderingPipeline | null = null;
   private quality: GraphicsQuality;
-  private autoTuned = false;
+  private warmupSamples = 2;
 
   // Adaptive step-down bookkeeping: rolling average over the last seconds
   private fpsSamples: number[] = [];
@@ -73,18 +75,19 @@ export class PostProcessing {
     curves.highlightsDensity = 30;
     p.imageProcessing.colorCurvesEnabled = true;
     p.imageProcessing.colorCurves = curves;
-    p.bloomEnabled = true;
+    const cosmeticEffects = this.quality !== "performance";
+    p.bloomEnabled = cosmeticEffects;
     p.bloomThreshold = 0.86;
     p.bloomWeight = 0.14;
     p.bloomKernel = 48;
     p.bloomScale = 0.5;
-    p.grainEnabled = true;
+    p.grainEnabled = cosmeticEffects;
     p.grain.intensity = 4; // a whisper of film grain — enough to break banding, not to blur
     p.grain.animated = true;
-    p.chromaticAberrationEnabled = true;
+    p.chromaticAberrationEnabled = cosmeticEffects;
     p.chromaticAberration.aberrationAmount = 3;
     p.chromaticAberration.radialIntensity = 0.8; // only the corners fringe, the center stays clean
-    p.sharpenEnabled = true;
+    p.sharpenEnabled = cosmeticEffects;
     p.sharpen.colorAmount = 1.0;
     this.pipeline = p;
 
@@ -95,6 +98,10 @@ export class PostProcessing {
     return this.quality;
   }
 
+  public get frameRateLimit(): number | undefined {
+    return TIERS[this.quality].maxFps;
+  }
+
   public setOnQualityChange(cb: (q: GraphicsQuality, auto: boolean) => void): void {
     this.onQualityChange = cb;
   }
@@ -102,39 +109,63 @@ export class PostProcessing {
   public setQuality(q: GraphicsQuality, persist: boolean = true): void {
     if (q === this.quality) return;
     this.quality = q;
+    this.resetPerformanceSamples();
     if (persist) Settings.setGraphicsQuality(q);
     this.apply();
     this.onQualityChange?.(q, !persist);
   }
 
-  // Feed the measured frame rate once a second while a match is live. If
-  // the rig can't hold a playable rate at the chosen tier, drop one tier —
-  // once per session, so a slow first second (shader warm-up) can't cascade
-  // the game into the lowest setting.
+  public resetPerformanceSamples(): void {
+    this.fpsSamples.length = 0;
+    this.warmupSamples = 2;
+  }
+
+  // Ignore shader warm-up/resume, then evaluate five seconds of actual play.
+  // Each step gets a fresh settling period before considering another tier.
   public reportFps(fps: number): void {
-    if (this.autoTuned || fps <= 0) return;
+    if (fps <= 0) return;
+    if (this.warmupSamples > 0) {
+      this.warmupSamples--;
+      return;
+    }
     this.fpsSamples.push(fps);
     if (this.fpsSamples.length < 5) return;
     const avg = this.fpsSamples.reduce((a, b) => a + b, 0) / this.fpsSamples.length;
     this.fpsSamples.length = 0;
     const i = TIER_ORDER.indexOf(this.quality);
     if (avg < 45 && i < TIER_ORDER.length - 1) {
-      this.autoTuned = true;
       this.setQuality(TIER_ORDER[i + 1], false);
     }
   }
 
+  public resize(): void {
+    const tier = TIERS[this.quality];
+    let dpr = Math.min(window.devicePixelRatio || 1, tier.maxPixelRatio);
+    if (tier.maxPixels) {
+      const canvas = this.engine.getRenderingCanvas();
+      const width = Math.max(1, canvas?.clientWidth || window.innerWidth);
+      const height = Math.max(1, canvas?.clientHeight || window.innerHeight);
+      dpr = Math.min(dpr, Math.sqrt(tier.maxPixels / (width * height)));
+    }
+    // This setter also resizes the backing canvas.
+    this.engine.setHardwareScalingLevel(1 / dpr);
+  }
+
   private apply(): void {
     const tier = TIERS[this.quality];
-    const dpr = Math.min(window.devicePixelRatio || 1, tier.maxPixelRatio);
-    this.engine.setHardwareScalingLevel(1 / dpr);
+    this.resize();
 
     const p = this.pipeline;
     p.samples = tier.samples;
     p.fxaaEnabled = tier.fxaa;
+    const cosmeticEffects = this.quality !== "performance";
+    p.bloomEnabled = cosmeticEffects;
+    p.grainEnabled = cosmeticEffects;
+    p.chromaticAberrationEnabled = cosmeticEffects;
+    p.sharpenEnabled = tier.sharpen > 0;
     p.sharpen.edgeAmount = tier.sharpen;
     // bloom is a screen-space blur: keep its footprint constant in pixels
-    p.bloomKernel = Math.round(48 * Math.max(1, dpr * 0.75));
+    p.bloomKernel = Math.round(48 * Math.max(1, (1 / this.engine.getHardwareScalingLevel()) * 0.75));
 
     if (tier.ssao && !this.ssao) {
       // Ambient occlusion: contact shadow where containers meet the grass,

@@ -11,7 +11,7 @@ import { DeathCam } from "../player/DeathCam";
 import { WeaponManager } from "../weapons/WeaponManager";
 import { ShipBoxMap } from "../world/ShipBoxMap";
 import { BotManager } from "../bots/BotManager";
-import { preloadSoldierModel } from "../bots/SoldierAssets";
+import { preloadSoldierModel, whenSoldierModelReady } from "../bots/SoldierAssets";
 import { Killstreaks } from "../killstreaks/Killstreaks";
 import { ViewModelRig } from "../rendering/ViewModelRig";
 import { ScopeOverlay } from "../rendering/ScopeOverlay";
@@ -54,13 +54,14 @@ export class Game {
   private killstreaks: Killstreaks;
   private deathCam: DeathCam;
 
-  // Match flow: updates only run while "playing"; paused/ended keep
-  // rendering the frozen frame under the DOM overlays
+  // Gameplay runs only while playing. Menus render on changes, then leave
+  // the last canvas frame underneath their DOM overlays.
   private matchState: MatchState = "start";
   private everLocked = false;
   private wasDead = false; // edge detector for the death-cam handoff
   private elapsed = 0; // monotonic game time for UI pulse phases
   private lastFpsUpdate = 0; // Time.fpsUpdates seen by the adaptive quality step-down
+  private minimapAccumulator = 1 / 20;
   private hudRootEl = document.getElementById("hud-root");
   private lastHideCrosshair = false;
   private disposed = false;
@@ -76,10 +77,11 @@ export class Game {
     //   backbuffer behind a post-process pipeline only burns bandwidth
     // - preserveDrawingBuffer/stencil false: nothing reads pixels back and
     //   nothing uses stencil — both cost real GPU time when enabled
-    // - adaptToDeviceRatio: render at native device pixels (a Retina display
-    //   otherwise gets a half-resolution image stretched 2x — the single
-    //   biggest sharpness loss); PostProcessing caps the ratio for speed
-    this.engine = new Engine(this.canvas, false, { preserveDrawingBuffer: false, stencil: false, adaptToDeviceRatio: true });
+    // PostProcessing owns device-pixel scaling and the Fast pixel budget.
+    // Engine auto-adaptation would multiply that scale again on DPR changes
+    // (browser zoom / moving between monitors), bypassing the quality cap.
+    this.engine = new Engine(this.canvas, false, { preserveDrawingBuffer: false, stencil: false });
+    this.engine.renderEvenInBackground = false;
     this.scene = new Scene(this.engine);
 
     // Gritty industrial fog/clear color
@@ -119,7 +121,10 @@ export class Game {
       onResume: () => this.input.requestPointerLock(),
       onEndMatch: () => this.endMatch(),
       onPlayAgain: () => this.restartMatch(),
-      onDifficultyChange: (level) => this.botManager.setDifficultyLevel(level),
+      onDifficultyChange: (level) => {
+        this.botManager.setDifficultyLevel(level);
+        this.startLoop();
+      },
       onToggleTrashTalk: (muted) => this.rivalVoice.setMuted(muted),
       onGraphicsChange: (quality) => this.postfx.setQuality(quality),
     });
@@ -151,10 +156,12 @@ export class Game {
     this.postfx = new PostProcessing(this.engine, this.scene, this.cameraRig.camera);
     this.postfx.setOnQualityChange((quality, auto) => {
       this.matchUI.renderGraphics(quality);
-      this.map.setDynamicShadows(quality === "high");
-      if (auto) this.matchUI.toast(`FRAME RATE LOW — GRAPHICS SET TO ${quality.toUpperCase()}`);
+      this.map.setGraphicsQuality(quality);
+      this.startLoop();
+      if (auto)
+        this.matchUI.toast(`FRAME RATE LOW — GRAPHICS SET TO ${quality === "performance" ? "FAST" : quality.toUpperCase()}`);
     });
-    this.map.setDynamicShadows(this.postfx.currentQuality === "high");
+    this.map.setGraphicsQuality(this.postfx.currentQuality);
 
     // Every material in the scene is now final: textures may still repaint
     // (target boards) and light uniforms still update (muzzle flash), but no
@@ -164,16 +171,21 @@ export class Game {
       material.freeze();
     }
 
-    this.scene.animationsEnabled = false;
+    this.setSimulationPaused(true);
     this.viewModelRig.setHidden(true);
     this.hud.hidePrompt();
     this.matchUI.showStart(this.botManager.getDifficultyLevel());
 
     // 3. Start Main Loop
+    // Assets can finish loading after an idle frame has already been drawn.
+    this.scene.onDataLoadedObservable.add(() => this.startLoop());
+    whenSoldierModelReady(this.scene, () => this.startLoop());
     this.startLoop();
 
     // 4. Handle Window Resize
     window.addEventListener("resize", this.onResize);
+    window.addEventListener("blur", this.onBlur);
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   private onPointerLockChange = (): void => {
@@ -187,7 +199,23 @@ export class Game {
   };
 
   private onResize = (): void => {
-    this.engine.resize();
+    this.postfx.resize();
+    this.startLoop();
+  };
+
+  private onBlur = (): void => {
+    this.pauseMatch();
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+  };
+
+  private onVisibilityChange = (): void => {
+    if (document.hidden) {
+      this.pauseMatch();
+      if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+      this.engine.stopRenderLoop();
+    } else {
+      this.startLoop();
+    }
   };
 
   public dispose(): void {
@@ -196,9 +224,13 @@ export class Game {
     this.engine.stopRenderLoop();
     document.removeEventListener("pointerlockchange", this.onPointerLockChange);
     window.removeEventListener("resize", this.onResize);
-    this.killstreaks.onMatchEnd();
+    window.removeEventListener("blur", this.onBlur);
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
+    this.killstreaks.dispose();
     this.rivalVoice.dispose();
     this.matchUI.dispose();
+    this.hud.dispose();
+    this.effects.dispose();
     this.postfx.dispose();
     resetDynamicShadowCasters();
     resetEnvironmentCache();
@@ -209,11 +241,33 @@ export class Game {
   }
 
   private startLoop(): void {
-    this.engine.runRenderLoop(() => {
-      if (this.disposed) return;
-      this.time.update();
-      this.frame();
-    });
+    if (this.disposed || document.hidden) return;
+    this.engine.maxFPS = this.matchState === "playing" ? this.postfx.frameRateLimit : 15;
+    this.engine.performanceMonitor.reset();
+    this.time.reset();
+    if (this.matchState === "playing") this.postfx.resetPerformanceSamples();
+    // Stable callback identity also makes resize/asset notifications idempotent.
+    this.engine.runRenderLoop(this.renderFrame);
+  }
+
+  private renderFrame = (): void => {
+    if (this.disposed || document.hidden) {
+      this.engine.stopRenderLoop(this.renderFrame);
+      return;
+    }
+    this.time.update();
+    this.frame();
+    // Allow asynchronous shaders/textures to finish before the final menu
+    // frame, then stop scheduling GPU work until something changes.
+    if (this.matchState !== "playing" && this.scene.isReady()) {
+      this.engine.stopRenderLoop(this.renderFrame);
+    }
+  };
+
+  private setSimulationPaused(paused: boolean): void {
+    this.scene.animationsEnabled = !paused;
+    this.map.setPaused(paused);
+    this.effects.setPaused(paused);
   }
 
   // Deterministic stepping for tooling: advance the simulation N frames of
@@ -263,6 +317,12 @@ export class Game {
 
       // Step 2: Update Player (look, movement, camera rig)
       this.player.update(dt, adsState.sensitivityMultiplier, activeWeapon.adsAnimator.getProgress());
+      // Refill before accepting the first frame's weapon input after respawn.
+      if (this.player.consumeRespawn()) {
+        this.weaponManager.refillAll();
+        this.deathCam.end();
+        this.wasDead = false;
+      }
 
       // Step 3: Update Weapon Systems (firing, bolt action state, reloading,
       // ADS animation). While killstreak hardware is in hand, LMB belongs
@@ -282,11 +342,6 @@ export class Game {
       // frame's gunshot noise for their hearing. A respawned player gets a
       // fresh Fall of Duty loadout.
       this.botManager.update(dt, this.player, this.weaponManager.firedThisFrame);
-      if (this.player.consumeRespawn()) {
-        this.weaponManager.refillAll();
-        this.deathCam.end();
-        this.wasDead = false;
-      }
 
       // Step 3.6: Killstreaks — the C-key laptop, scheduled bombs, the
       // Apache. Runs after the bots so this frame's kills count instantly.
@@ -333,7 +388,7 @@ export class Game {
       }
     }
 
-    // Step 6: Render Scene (paused/ended render the frozen frame under the menus)
+    // Step 6: Render the current scene (idle calls redraw menu backgrounds).
     this.scene.render();
 
     // Step 6.5: Once a second while playing, let the image pipeline judge
@@ -346,13 +401,17 @@ export class Game {
     // Step 7: Update HUD interface + minimap radar (UAV reveal included)
     if (this.matchState === "playing") {
       this.hud.update(this.weaponManager.getActiveWeapon(), this.input, this.player);
-      this.minimap.update(
-        this.player,
-        this.botManager.bots,
-        this.killstreaks.uavActive,
-        this.elapsed,
-        this.killstreaks.getApacheRadarContact()
-      );
+      this.minimapAccumulator += this.time.deltaTime;
+      if (this.postfx.currentQuality !== "performance" || this.minimapAccumulator >= 1 / 20) {
+        this.minimapAccumulator %= 1 / 20;
+        this.minimap.update(
+          this.player,
+          this.botManager.bots,
+          this.killstreaks.uavActive,
+          this.elapsed,
+          this.killstreaks.getApacheRadarContact()
+        );
+      }
     }
 
     // Step 8: Clear single-frame key transitions (every state — stale
@@ -378,34 +437,37 @@ export class Game {
     this.matchUI.resetMatch();
     this.matchUI.hideStart();
     this.input.clearAllInputs();
-    this.scene.animationsEnabled = true;
+    this.setSimulationPaused(false);
     this.killstreaks.setPaused(false);
     this.viewModelRig.setHidden(false);
     this.hudRootEl?.classList.remove("hide-crosshair");
     this.lastHideCrosshair = false;
     this.matchState = "playing";
+    this.minimapAccumulator = 1 / 20;
+    this.startLoop();
     this.input.requestPointerLock();
   }
 
   private pauseMatch(): void {
     if (this.matchState !== "playing") return;
     this.matchState = "paused";
-    // scene.render keeps running under the menu — freeze the skeletal clips
-    // so the soldiers don't idle behind the frozen frame
-    this.scene.animationsEnabled = false;
+    this.setSimulationPaused(true);
     this.input.clearAllInputs();
     this.killstreaks.setPaused(true); // the rotor must not thump over the menu
     this.hud.hidePrompt();
     this.matchUI.showPause(this.botManager.playerKills, this.player.deaths, this.botManager.getDifficultyLevel());
+    this.startLoop();
   }
 
   private resumeMatch(): void {
     if (this.matchState !== "paused") return;
     this.matchState = "playing";
-    this.scene.animationsEnabled = true;
+    this.setSimulationPaused(false);
     this.input.clearAllInputs();
     this.killstreaks.setPaused(false);
     this.matchUI.hidePause();
+    this.minimapAccumulator = 1 / 20;
+    this.startLoop();
   }
 
   // No result given (End Match button): judge by the current score
@@ -415,17 +477,18 @@ export class Game {
     const deaths = this.player.deaths;
     const finalResult: MatchResult = result ?? (kills > deaths ? "victory" : deaths > kills ? "defeat" : "draw");
     this.matchState = "ended";
-    this.scene.animationsEnabled = false;
+    this.setSimulationPaused(true);
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
     this.input.clearAllInputs();
     this.killstreaks.onMatchEnd(); // silence the rotor, shut the laptop, free the keys
     this.hud.hidePrompt();
     this.matchUI.setScore(kills, deaths);
     this.matchUI.showEnd(finalResult, kills, deaths);
+    this.startLoop();
   }
 
   private restartMatch(): void {
-    this.scene.animationsEnabled = true;
+    this.setSimulationPaused(false);
     this.player.resetForMatch();
     this.botManager.resetMatch(this.player);
     this.weaponManager.resetLoadout();
@@ -437,6 +500,8 @@ export class Game {
     this.matchUI.resetMatch();
     this.input.clearAllInputs();
     this.matchState = "playing";
+    this.minimapAccumulator = 1 / 20;
+    this.startLoop();
     // Play Again is a click — a valid user gesture for re-capturing the mouse
     this.input.requestPointerLock();
   }

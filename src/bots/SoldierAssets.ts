@@ -20,9 +20,18 @@ let entry: Entry | null = null;
 export function preloadSoldierModel(scene: Scene): void {
   const e: Entry = { scene, container: null, waiters: [] };
   entry = e;
+  scene.onDisposeObservable.addOnce(() => {
+    if (entry === e) entry = null;
+    e.waiters.length = 0;
+    e.container?.dispose();
+    e.container = null;
+  });
   LoadAssetContainerAsync(assetUrl("models/soldier.glb"), scene)
     .then((container) => {
-      if (entry !== e || scene.isDisposed) return;
+      if (entry !== e || scene.isDisposed) {
+        container.dispose();
+        return;
+      }
       e.container = container;
       for (const w of e.waiters) w(container);
       e.waiters.length = 0;

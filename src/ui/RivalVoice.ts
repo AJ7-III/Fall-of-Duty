@@ -32,6 +32,7 @@ export class RivalVoice {
   private currentAudio: HTMLAudioElement | null = null;
   private playToken = 0;
   private muted = Settings.getTrashTalkMuted();
+  private unsubscribe: Array<() => void> = [];
 
   constructor() {
     if (this.nameEl) this.nameEl.innerText = RIVAL_DISPLAY_NAME;
@@ -39,10 +40,12 @@ export class RivalVoice {
 
     // "kill" is the player scoring: the rival curses. "playerDeath" is the
     // rival scoring: they gloat.
-    MatchEvents.on("kill", () => this.maybePlay(this.deathDeck, this.deathTalkGate));
-    MatchEvents.on("playerDeath", (e) => {
-      if (!e.self) this.maybePlay(this.victoryDeck, this.victoryTalkGate);
-    });
+    this.unsubscribe.push(MatchEvents.on("kill", () => this.maybePlay(this.deathDeck, this.deathTalkGate)));
+    this.unsubscribe.push(
+      MatchEvents.on("playerDeath", (e) => {
+        if (!e.self) this.maybePlay(this.victoryDeck, this.victoryTalkGate);
+      })
+    );
   }
 
   public resetMatch(): void {
@@ -61,6 +64,8 @@ export class RivalVoice {
 
   public dispose(): void {
     this.stop();
+    for (const off of this.unsubscribe) off();
+    this.unsubscribe.length = 0;
   }
 
   // "Mute Trash Talk" toggle: silence the rival's voice comms and cut off

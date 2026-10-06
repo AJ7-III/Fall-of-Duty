@@ -13,6 +13,7 @@ import {
 import "@babylonjs/loaders/glTF/2.0";
 import { assetUrl } from "../assets/paths";
 import { soldierMaterialFor } from "../bots/SoldierBody";
+import type { GraphicsQuality } from "./Settings";
 
 export class StartCharacterPreview {
   private canvas: HTMLCanvasElement | null;
@@ -23,33 +24,54 @@ export class StartCharacterPreview {
   private loadStarted = false;
   private running = false;
   private disposed = false;
+  private visible = false;
+  private quality: GraphicsQuality = "high";
 
   constructor(canvasId: string) {
     this.canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+    document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   public start(): void {
+    this.visible = true;
+    this.syncLoop();
+  }
+
+  public setQuality(quality: GraphicsQuality): void {
+    this.quality = quality;
+    if (this.engine) this.engine.maxFPS = quality === "performance" ? 15 : 30;
+  }
+
+  private onVisibilityChange = (): void => this.syncLoop();
+
+  private syncLoop(): void {
+    if (!this.visible || document.hidden || this.disposed) {
+      this.engine?.stopRenderLoop();
+      this.running = false;
+      return;
+    }
     if (!this.canvas || this.disposed) return;
     this.ensureScene();
     if (!this.engine || !this.scene || this.running) return;
     this.running = true;
+    this.engine.performanceMonitor.reset();
     this.engine.runRenderLoop(() => {
       if (!this.scene || this.scene.isDisposed) return;
-      if (this.modelRoot) this.modelRoot.rotation.y += this.scene.getEngine().getDeltaTime() * 0.00018;
+      if (this.modelRoot) this.modelRoot.rotation.y += Math.min(this.scene.getEngine().getDeltaTime(), 100) * 0.00018;
       this.scene.render();
     });
   }
 
   public stop(): void {
-    if (!this.engine || !this.running) return;
-    this.engine.stopRenderLoop();
-    this.running = false;
+    this.visible = false;
+    this.syncLoop();
   }
 
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.stop();
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
     this.resizeObserver?.disconnect();
     this.scene?.dispose();
     this.engine?.dispose();
@@ -63,6 +85,8 @@ export class StartCharacterPreview {
     if (!this.canvas || this.engine || this.scene) return;
 
     this.engine = new Engine(this.canvas, true, { preserveDrawingBuffer: false, stencil: false });
+    this.engine.renderEvenInBackground = false;
+    this.engine.maxFPS = this.quality === "performance" ? 15 : 30;
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0, 0, 0, 0);
 
