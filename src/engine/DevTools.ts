@@ -1,15 +1,12 @@
-import {
-  Color3,
-  DynamicTexture,
-  EngineInstrumentation,
-  Matrix,
-  MeshBuilder,
-  PBRMaterial,
-  SceneInstrumentation,
-  StandardMaterial,
-  Vector3,
-  Vector4,
-} from "@babylonjs/core";
+import "@babylonjs/core/Misc/screenshotTools";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { EngineInstrumentation } from "@babylonjs/core/Instrumentation/engineInstrumentation";
+import { Matrix, Vector3, Vector4 } from "@babylonjs/core/Maths/math.vector";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { Scene, TransformNode } from "@babylonjs/core";
 import type { Game } from "./Game";
 import type { WeaponId } from "../weapons/WeaponTypes";

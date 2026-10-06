@@ -1,4 +1,6 @@
-import { Mesh, MeshBuilder, Vector3 } from "@babylonjs/core";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core";
 import { flatMat } from "../rendering/materials/canvas";
 import { createLimb, handAnchor, mergeWeaponParts, prim } from "./kit";

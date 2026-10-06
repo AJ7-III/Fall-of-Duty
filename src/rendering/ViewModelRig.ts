@@ -1,4 +1,6 @@
-import { Ray, TransformNode, Vector3 } from "@babylonjs/core";
+import { Ray } from "@babylonjs/core/Culling/ray";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene, Mesh } from "@babylonjs/core";
 import type { CameraRig } from "../player/CameraRig";
 import { BoltActionSniper } from "../weapons/BoltActionSniper";

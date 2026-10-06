@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core";
-import { Vector3 } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Input } from "../engine/Input";
 import type { CameraRig } from "../player/CameraRig";
 import { ADSAnimator } from "./ADSAnimator";

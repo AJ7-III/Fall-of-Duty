@@ -1,4 +1,11 @@
-import { ColorCurves, DefaultRenderingPipeline, ImageProcessingConfiguration, SSAO2RenderingPipeline } from "@babylonjs/core";
+import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
+import "@babylonjs/core/Rendering/prePassRendererSceneComponent";
+import "@babylonjs/core/Rendering/geometryBufferRendererSceneComponent";
+import "@babylonjs/core/Rendering/depthRendererSceneComponent";
+import { ColorCurves } from "@babylonjs/core/Materials/colorCurves";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
+import { SSAO2RenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline";
 import type { Camera, Engine, Scene } from "@babylonjs/core";
 import { Settings } from "../ui/Settings";
 import type { GraphicsQuality } from "../ui/Settings";

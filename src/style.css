@@ -1806,3 +1806,21 @@ body {
     padding-bottom: 8px;
   }
 }
+
+/* Loading remains visible before the game bundle or GPU is ready. */
+.startup-status {
+  color: var(--text-muted, #c0c7c9);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.startup-status p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.startup-error {
+  color: #ffada5;
+}
+.start-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}

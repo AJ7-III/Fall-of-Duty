@@ -1,4 +1,8 @@
-import { Color3, DynamicTexture, PBRMaterial, StandardMaterial, Texture } from "@babylonjs/core";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { BaseTexture, Scene } from "@babylonjs/core";
 
 // Procedural material kit. Every surface in the yard is painted at load time

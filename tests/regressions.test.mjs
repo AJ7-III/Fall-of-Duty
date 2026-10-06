@@ -179,3 +179,85 @@ test("unsubscribing during an event does not skip another listener", async () =>
   assert.deepEqual(calls, [1, 2]);
   offSecond();
 });
+
+const { BotNav } = await server.ssrLoadModule("/src/bots/BotNav.ts");
+const { observePlayer, samplePlayerBody } = await server.ssrLoadModule("/src/bots/BotPerception.ts");
+const { rayVsPlayerBody, angleDelta, selectWeapon } = await server.ssrLoadModule("/src/bots/BotCombat.ts");
+const { BotRouteMemory, selectSearchNode } = await server.ssrLoadModule("/src/bots/BotNavigation.ts");
+const { BOT_WEAPONS, difficultyForLevel } = await server.ssrLoadModule("/src/bots/BotConfig.ts");
+
+const playerBody = () => ({ position: new Vector3(0, 0, 5), eyeHeight: 1.7, isDead: false });
+
+test("bot perception sees exposed players but cannot see through a wall", () => {
+  PlayerController.clearObstacles();
+  BotNav.build();
+  const sight = { visible: false, exposure: 0, aimSample: 1 };
+  const player = playerBody();
+  observePlayer(new Vector3(), 0, player, difficultyForLevel(5), false, sight);
+  assert.equal(sight.visible, true);
+  assert.equal(sight.exposure, 1);
+  assert.equal(sight.aimSample, 1, "chest has first aim priority");
+  PlayerController.registerObstacle(-2, 2, 0, 3, 2, 3);
+  BotNav.build();
+  observePlayer(new Vector3(), 0, player, difficultyForLevel(5), false, sight);
+  assert.equal(sight.visible, false);
+  assert.equal(sight.exposure, 0);
+  PlayerController.clearObstacles();
+});
+
+test("bot sight cone excludes a player behind it and ignores dead players", () => {
+  BotNav.build();
+  const player = playerBody();
+  const sight = { visible: false, exposure: 0, aimSample: 1 };
+  observePlayer(new Vector3(), Math.PI, player, difficultyForLevel(5), true, sight);
+  assert.equal(sight.visible, false);
+  player.isDead = true;
+  observePlayer(new Vector3(), 0, player, difficultyForLevel(5), true, sight);
+  assert.equal(sight.visible, false);
+});
+
+test("bot silhouette tracks the player's crouched eye height", () => {
+  const player = playerBody();
+  const out = new Vector3();
+  samplePlayerBody(new Vector3(), player, 0, out);
+  assert.equal(out.y, 1.7);
+  player.eyeHeight = 0.95;
+  samplePlayerBody(new Vector3(), player, 0, out);
+  assert.equal(out.y, 0.95);
+});
+
+test("bot shots hit the body and point-blank shots, but miss above the head", () => {
+  const player = playerBody();
+  const dir = new Vector3(0, 0, 1);
+  assert.ok(Math.abs(rayVsPlayerBody(new Vector3(0, 1, 0), dir, player) - 4.58) < 1e-6);
+  assert.equal(rayVsPlayerBody(new Vector3(0, 3, 0), dir, player), Infinity);
+  assert.ok(Math.abs(rayVsPlayerBody(new Vector3(0, 1, 5), dir, player) - 0.42) < 1e-6);
+  assert.ok(Math.abs(angleDelta(Math.PI - 0.1, -Math.PI + 0.1) - 0.2) < 1e-6);
+});
+
+test("weapon utility favors a loaded sidearm when the primary is dry", () => {
+  assert.equal(
+    selectWeapon(
+      [
+        { clip: 0, profile: BOT_WEAPONS.mp44 },
+        { clip: BOT_WEAPONS.usp45.magSize, profile: BOT_WEAPONS.usp45 },
+      ],
+      0,
+      2,
+      1
+    ),
+    1
+  );
+});
+
+test("route memory discourages revisits and resets for a new match", () => {
+  BotNav.build();
+  const memory = new BotRouteMemory();
+  const node = BotNav.nearestNode(0, 0);
+  memory.remember(node);
+  assert.ok(memory.penalty(node, -1, -1, -1) < 1);
+  memory.reset();
+  assert.equal(memory.penalty(node, -1, -1, -1), 1);
+  const chosen = selectSearchNode(new Vector3(-10, 0, -10), { x: 0, z: 0 }, new Vector3(), 5, () => 1);
+  assert.ok(chosen >= 0 && BotNav.walkable[chosen] === 1);
+});

@@ -1,4 +1,9 @@
-import { Mesh, MeshBuilder, StandardMaterial, Color3, DynamicTexture, TransformNode } from "@babylonjs/core";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { FreeCamera, Scene } from "@babylonjs/core";
 import { PlayerController } from "../player/PlayerController";
 import type { Input } from "../engine/Input";

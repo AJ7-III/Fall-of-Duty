@@ -1,6 +1,9 @@
-import { Color3, DynamicTexture, StandardMaterial } from "@babylonjs/core";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { PBRMaterial, Scene } from "@babylonjs/core";
-import { canvasMat, flatMat, makeCanvasTexture, paintNoise } from "../../rendering/materials/canvas";
+import { canvasMat, flatMat, makeCanvasTexture, normalMapFromHeight, paintNoise } from "../../rendering/materials/canvas";
 
 // Every surface of the Ship Box yard, painted procedurally at load time.
 // Materials are cached by name on the scene, so the map, the wrecks and the
@@ -891,325 +894,509 @@ export class WorldMaterials {
     return mat;
   }
 
-  public createGraffitiWallMaterial(uScale: number = 6, vScale: number = 1): PBRMaterial {
-    return canvasMat(
-      this.scene,
-      `graffitiWallMat_${uScale}_${vScale}`,
-      1024,
-      { rough: 0.88, wet: 0.35, bump: 0.8, u: uScale, v: vScale },
-      (ctx, s) => {
-        // -- Concrete base --
-        ctx.fillStyle = "#8c8a84";
-        ctx.fillRect(0, 0, s, s);
-        paintNoise(ctx, s, ["#858380", "#93918c", "#7e7c78", "#9b9993"], 500, 6, 55, 0.45);
-        paintNoise(ctx, s, ["#6e6c68", "#62605c"], 200, 2, 9, 0.38);
-        paintNoise(ctx, s, ["#a6a4a0", "#9e9c98"], 100, 1, 5, 0.32);
+  // Four wall strips share one atlas. Each strip has four curated pieces
+  // rather than repeating the same square stamp six times along every wall.
+  // The long faces choose a strip in ShipBoxMap; the small faces sample its
+  // quiet left margin. 8px vertical gutters keep neighbouring walls out of
+  // the filtered UVs. A 2MP albedo plus tiny concrete normal costs less than
+  // the old three 1MP maps, and all four wall meshes can still merge.
+  public createGraffitiWallMaterial(): PBRMaterial {
+    const name = "graffitiWallAtlasMat";
+    const cached = this.scene.getMaterialByName(name);
+    if (cached) return cached as PBRMaterial;
 
-        // vertical grime and damp streaks
-        for (let i = 0; i < 22; i++) {
-          ctx.globalAlpha = 0.04 + Math.random() * 0.07;
-          ctx.fillStyle = "#3a3835";
-          ctx.fillRect(Math.random() * s, 0, 3 + Math.random() * 22, s);
+    const tex = new DynamicTexture("graffitiWallAtlasTex", { width: 2048, height: 1024 }, this.scene, true);
+    tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+    tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+    tex.anisotropicFilteringLevel = 8;
+    WorldMaterials.paintGraffitiAtlas(tex.getContext() as CanvasRenderingContext2D);
+    tex.update();
+
+    // Concrete grain alone supplies relief. Deriving normals from the
+    // coloured artwork made pale outlines swell and dark ink look carved.
+    const normalSize = 256;
+    const height = new Float32Array(normalSize * normalSize);
+    for (let y = 0; y < normalSize; y++) {
+      for (let x = 0; x < normalSize; x++) {
+        const grain = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+        height[y * normalSize + x] = 0.5 + (grain - Math.floor(grain) - 0.5) * 0.045;
+      }
+    }
+    const bump = normalMapFromHeight(this.scene, "graffitiWallConcreteTex_n", height, normalSize, 1.0);
+    return flatMat(this.scene, name, { albedo: [1, 1, 1], rough: 0.87, tex, bump });
+  }
+
+  private static paintGraffitiAtlas(ctx: CanvasRenderingContext2D): void {
+    // The artwork is laid out in wall proportions (8.45m × 2.55m per
+    // panel). The atlas compresses x to 512px, so letters retain their
+    // intended proportions when those UVs cover the real wall geometry.
+    const panelW = 800;
+    const panelH = 256;
+    let seed = 0x51f15e;
+    const random = (): number => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    // Hand-drawn closed glyphs and marker strokes avoid platform fonts and
+    // give the broad pieces, round throw-ups and small signatures distinct
+    // silhouettes. Counters are filled with the even-odd rule.
+    const blocks: Record<string, string> = {
+      A: "M0 118L24 4L63 0L91 114L65 120L57 87L27 89L22 119Z M35 67L53 65L44 28Z",
+      C: "M84 5L80 29L32 26L25 87L78 87L88 112L11 120L0 100L5 19L23 0Z",
+      D: "M8 4L64 0L88 22L84 96L66 117L0 120Z M30 28L25 92L55 90L62 76L64 40L54 27Z",
+      E: "M8 4L87 0L81 27L33 30L31 48L73 45L68 71L28 72L26 94L85 87L79 115L0 120Z",
+      F: "M8 3L90 0L82 29L34 28L31 49L74 44L69 73L28 74L24 118L0 120Z",
+      H: "M7 4L34 0L30 44L61 42L66 0L90 7L81 118L56 120L59 72L28 74L24 119L0 115Z",
+      I: "M7 4L85 0L83 26L59 30L55 91L84 89L78 115L0 120L4 96L27 93L32 30L5 32Z",
+      K: "M9 3L35 0L31 46L67 0L94 10L55 59L88 110L61 120L28 77L23 116L0 120Z",
+      L: "M9 3L36 0L27 92L85 86L82 114L0 120Z",
+      M: "M7 6L34 0L47 44L68 2L94 7L88 119L62 116L66 54L46 84L29 53L25 120L0 117Z",
+      N: "M8 4L32 0L61 66L68 0L93 5L82 119L59 120L29 55L24 115L0 119Z",
+      O: "M22 0L71 3L91 24L84 99L66 118L16 120L0 99L6 21Z M32 29L27 89L55 91L63 79L67 32Z",
+      R: "M8 4L72 0L91 20L83 63L62 76L90 110L63 120L34 80L27 80L23 116L0 120Z M34 28L30 54L59 50L64 28Z",
+      S: "M23 0L88 4L80 31L33 28L29 47L70 49L89 66L80 102L64 119L0 116L5 88L55 92L59 74L18 71L2 53L9 16Z",
+      T: "M4 6L94 0L87 31L60 32L53 118L27 120L34 35L0 36Z",
+      U: "M9 3L35 0L27 89L57 92L67 1L94 5L84 98L65 119L15 120L0 100Z",
+      V: "M0 8L28 0L41 79L65 0L94 7L56 115L29 120Z",
+      W: "M0 7L27 0L32 76L49 33L64 73L77 0L103 6L80 115L55 120L44 85L31 119L9 115Z",
+      X: "M1 9L28 0L47 38L69 0L96 8L65 59L89 110L62 120L44 82L21 120L0 111L27 59Z",
+      Y: "M0 9L27 0L45 38L69 0L96 8L57 69L52 116L25 120L30 71Z",
+    };
+    const strokes: Record<string, string> = {
+      A: "M4 110L38 5Q42 -3 48 7L78 110M19 67L67 62",
+      C: "M78 15Q32 -15 13 23Q-3 54 9 94Q23 128 77 102",
+      D: "M13 111L17 8Q79 -6 80 53Q82 110 13 111",
+      E: "M78 9L18 14L9 109L77 102M15 59L64 55",
+      F: "M11 110L20 13L79 8M16 58L67 53",
+      H: "M16 9L8 111M77 5L69 108M12 61L72 54",
+      I: "M10 12L75 6M43 11L35 109M4 113L70 105",
+      K: "M18 8L9 112M81 3L14 64L77 107",
+      L: "M20 7L10 110L79 103",
+      M: "M7 111L16 10L42 66L72 7L76 110",
+      N: "M9 111L17 8L70 104L78 3",
+      O: "M43 6Q2 8 7 66Q6 117 46 111Q84 106 81 51Q82 -1 43 6Z",
+      R: "M10 112L18 11Q80 -6 78 36Q76 63 15 61M38 59L77 106",
+      S: "M79 15Q37 -11 15 19Q-6 49 43 59Q94 69 70 101Q49 125 5 101",
+      T: "M4 15L85 5M48 11L36 113",
+      U: "M17 7L9 82Q7 123 45 111Q76 105 78 4",
+      V: "M6 10L31 110L80 3",
+      W: "M4 10L17 109L45 49L63 106L88 2",
+      X: "M8 13L74 104M79 2L4 116",
+      Y: "M6 10L39 56L81 2M39 56L30 113",
+      "2": "M7 28Q38 -14 72 10Q97 37 12 107L82 102",
+      "3": "M7 13Q73 -7 78 30Q80 52 39 57Q91 50 78 91Q66 122 4 102",
+      "6": "M73 8Q18 14 9 76Q1 125 55 108Q89 101 74 64Q65 39 13 69",
+      "7": "M4 16L84 7L27 112M18 58L61 53",
+      "9": "M71 59Q15 86 9 35Q6 -5 58 8Q92 18 71 83L47 113",
+    };
+
+    type Piece = {
+      word: string;
+      style: "angular" | "bubble" | "marker";
+      x: number;
+      y: number;
+      size: number;
+      angle: number;
+      top: string;
+      bottom: string;
+      edge: string;
+      accent?: string;
+    };
+    const pieces: Piece[] = [
+      {
+        word: "RIFT",
+        style: "angular",
+        x: 365,
+        y: 142,
+        size: 132,
+        angle: -0.055,
+        top: "#e9ad61",
+        bottom: "#b85b38",
+        edge: "#eee0bf",
+        accent: "76",
+      },
+      {
+        word: "VEX",
+        style: "marker",
+        x: 445,
+        y: 151,
+        size: 48,
+        angle: -0.12,
+        top: "#393b37",
+        bottom: "#393b37",
+        edge: "#a5a197",
+      },
+      {
+        word: "ECHO",
+        style: "bubble",
+        x: 402,
+        y: 135,
+        size: 130,
+        angle: 0.025,
+        top: "#9ebcb1",
+        bottom: "#3d7b7e",
+        edge: "#ded7c2",
+        accent: "93",
+      },
+      {
+        word: "SILO",
+        style: "angular",
+        x: 354,
+        y: 143,
+        size: 112,
+        angle: -0.045,
+        top: "#d2d0c3",
+        bottom: "#899192",
+        edge: "#343e46",
+      },
+      {
+        word: "KENO",
+        style: "bubble",
+        x: 412,
+        y: 137,
+        size: 126,
+        angle: -0.04,
+        top: "#a8bacc",
+        bottom: "#4c719d",
+        edge: "#e2ddc7",
+        accent: "SOL",
+      },
+      {
+        word: "YARD",
+        style: "marker",
+        x: 280,
+        y: 146,
+        size: 44,
+        angle: 0.035,
+        top: "#d8d1b9",
+        bottom: "#d8d1b9",
+        edge: "#696e65",
+      },
+      {
+        word: "WAVE",
+        style: "angular",
+        x: 408,
+        y: 134,
+        size: 136,
+        angle: -0.02,
+        top: "#789bb0",
+        bottom: "#3d617e",
+        edge: "#c8caba",
+        accent: "27",
+      },
+      {
+        word: "SOL",
+        style: "marker",
+        x: 510,
+        y: 154,
+        size: 58,
+        angle: -0.11,
+        top: "#323631",
+        bottom: "#323631",
+        edge: "#aaa69b",
+      },
+      {
+        word: "NOX",
+        style: "angular",
+        x: 319,
+        y: 141,
+        size: 141,
+        angle: 0.05,
+        top: "#b8a5b7",
+        bottom: "#79627e",
+        edge: "#dbd1bc",
+        accent: "VEX",
+      },
+      {
+        word: "LARK",
+        style: "bubble",
+        x: 426,
+        y: 145,
+        size: 113,
+        angle: -0.055,
+        top: "#bbb996",
+        bottom: "#7f865e",
+        edge: "#d9d4bb",
+      },
+      {
+        word: "DRFT",
+        style: "marker",
+        x: 318,
+        y: 155,
+        size: 47,
+        angle: -0.07,
+        top: "#353a36",
+        bottom: "#353a36",
+        edge: "#96998c",
+      },
+      {
+        word: "HOME",
+        style: "angular",
+        x: 443,
+        y: 136,
+        size: 129,
+        angle: 0.035,
+        top: "#d7d0b9",
+        bottom: "#a39a83",
+        edge: "#405c64",
+        accent: "69",
+      },
+      {
+        word: "NOVA",
+        style: "marker",
+        x: 388,
+        y: 135,
+        size: 40,
+        angle: -0.08,
+        top: "#5b6258",
+        bottom: "#5b6258",
+        edge: "#b5b2a5",
+      },
+      {
+        word: "HUSH",
+        style: "bubble",
+        x: 373,
+        y: 142,
+        size: 124,
+        angle: -0.02,
+        top: "#c7a293",
+        bottom: "#9b6056",
+        edge: "#d6d0b8",
+        accent: "LARK",
+      },
+      {
+        word: "DOCK",
+        style: "angular",
+        x: 429,
+        y: 131,
+        size: 131,
+        angle: 0.045,
+        top: "#ceb875",
+        bottom: "#978349",
+        edge: "#36474b",
+      },
+      {
+        word: "NOVA",
+        style: "marker",
+        x: 507,
+        y: 150,
+        size: 55,
+        angle: 0.02,
+        top: "#d5d0bc",
+        bottom: "#d5d0bc",
+        edge: "#4c554f",
+      },
+    ];
+
+    const drawWord = (piece: Piece): void => {
+      const marker = piece.style === "marker";
+      const round = piece.style === "bubble";
+      const source = marker || round ? strokes : blocks;
+      const word = new Path2D();
+      const step = marker ? 69 : 89;
+      const wordW = (piece.word.length - 1) * step + 88;
+      for (let i = 0; i < piece.word.length; i++) {
+        const glyph = new Path2D(source[piece.word[i]] ?? source.X);
+        const tilt = [0.02, -0.015, 0.035, -0.025][i % 4];
+        word.addPath(glyph, new DOMMatrix([1, tilt, -0.055, 1, i * step - wordW / 2, -59 + [0, 3, -2, 1][i % 4]]));
+      }
+
+      ctx.save();
+      ctx.translate(piece.x, piece.y);
+      ctx.rotate(piece.angle);
+      ctx.scale(piece.size / 120, piece.size / 120);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      if (marker) {
+        ctx.transform(1, 0, -0.22, 1, 0, 0);
+        ctx.globalAlpha = 0.33;
+        ctx.strokeStyle = piece.edge;
+        ctx.lineWidth = 9;
+        ctx.stroke(word);
+        ctx.globalAlpha = 0.84;
+        ctx.strokeStyle = piece.top;
+        ctx.lineWidth = 5;
+        ctx.stroke(word);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-wordW * 0.58, 73);
+        ctx.bezierCurveTo(-wordW * 0.08, 57, wordW * 0.4, 91, wordW * 0.66, 62);
+        ctx.moveTo(wordW * 0.5, -50);
+        ctx.lineTo(wordW * 0.58, -64);
+        ctx.moveTo(wordW * 0.6, -47);
+        ctx.lineTo(wordW * 0.68, -61);
+        ctx.stroke();
+      } else {
+        const fill = ctx.createLinearGradient(0, -70, 18, 65);
+        fill.addColorStop(0, piece.top);
+        fill.addColorStop(0.6, piece.bottom);
+        fill.addColorStop(1, piece.top);
+        ctx.save();
+        ctx.translate(6, 9);
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = "#303632";
+        ctx.lineWidth = round ? 58 : 23;
+        ctx.stroke(word);
+        if (!round) {
+          ctx.fillStyle = "#303632";
+          ctx.fill(word, "evenodd");
         }
-        // hairline cracks
-        ctx.globalAlpha = 0.38;
-        ctx.strokeStyle = "#6a6864";
-        ctx.lineWidth = 1;
-        for (let i = 0; i < 10; i++) {
+        ctx.restore();
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = piece.edge;
+        ctx.lineWidth = round ? 58 : 24;
+        ctx.stroke(word);
+        ctx.strokeStyle = "#252d2b";
+        ctx.lineWidth = round ? 45 : 13;
+        ctx.stroke(word);
+        if (round) {
+          ctx.strokeStyle = fill;
+          ctx.lineWidth = 31;
+          ctx.stroke(word);
+        } else {
+          ctx.fillStyle = fill;
+          ctx.fill(word, "evenodd");
+          // One broken horizontal shine reads as paint, not a bevel.
+          ctx.globalAlpha = 0.27;
+          ctx.strokeStyle = "#f0e6ce";
+          ctx.lineWidth = 2;
           ctx.beginPath();
-          let x = Math.random() * s,
-            y = Math.random() * s;
-          ctx.moveTo(x, y);
-          for (let j = 0; j < 7; j++) {
-            x += (Math.random() - 0.5) * 90;
-            y += (Math.random() - 0.5) * 60;
-            ctx.lineTo(x, y);
-          }
+          ctx.moveTo(-wordW * 0.44, -39);
+          ctx.lineTo(-wordW * 0.13, -42);
+          ctx.moveTo(wordW * 0.06, -45);
+          ctx.lineTo(wordW * 0.36, -43);
           ctx.stroke();
         }
-        ctx.globalAlpha = 1;
-
-        const drawOverspray = (cx: number, cy: number, w: number, h: number, colors: string[], count: number, alpha: number) => {
-          for (let i = 0; i < count; i++) {
-            const ang = Math.random() * Math.PI * 2;
-            const radius = Math.sqrt(Math.random());
-            const px = cx + Math.cos(ang) * radius * w * 0.5 + (Math.random() - 0.5) * 18;
-            const py = cy + Math.sin(ang) * radius * h * 0.5 + (Math.random() - 0.5) * 18;
-            ctx.globalAlpha = alpha * (0.35 + Math.random() * 0.65);
-            ctx.fillStyle = colors[(Math.random() * colors.length) | 0];
-            ctx.beginPath();
-            ctx.arc(px, py, 0.5 + Math.random() * 2.4, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          ctx.globalAlpha = 1;
-        };
-
-        const drawDrip = (x: number, y: number, len: number, color: string, width: number) => {
-          ctx.save();
-          ctx.globalAlpha = 0.78;
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.moveTo(x - width * 0.5, y);
-          ctx.bezierCurveTo(x - width * 0.2, y + len * 0.26, x - width * 0.42, y + len * 0.72, x, y + len);
-          ctx.bezierCurveTo(x + width * 0.44, y + len * 0.72, x + width * 0.2, y + len * 0.28, x + width * 0.5, y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(x, y + len, width * 0.6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        };
-
-        const drawBuffPatch = (x: number, y: number, w: number, h: number, color: string, angle: number) => {
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.rotate(angle);
-          ctx.globalAlpha = 0.48;
-          ctx.fillStyle = color;
-          ctx.fillRect(-w * 0.5, -h * 0.5, w, h);
-          ctx.globalAlpha = 0.18;
-          ctx.strokeStyle = "#f0eee5";
-          ctx.lineWidth = 2;
-          for (let i = 0; i < 5; i++) {
-            const yy = -h * 0.44 + (i / 4) * h + (Math.random() - 0.5) * 4;
-            ctx.beginPath();
-            ctx.moveTo(-w * 0.48, yy);
-            ctx.lineTo(w * 0.48, yy + (Math.random() - 0.5) * 7);
-            ctx.stroke();
-          }
-          ctx.restore();
-          ctx.globalAlpha = 1;
-        };
-
-        const drawMarkerTag = (
-          text: string,
-          x: number,
-          y: number,
-          sizePx: number,
-          color: string,
-          angle: number,
-          underline: boolean
-        ) => {
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.rotate(angle);
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.textBaseline = "middle";
-          ctx.font = `italic 900 ${sizePx}px "Brush Script MT", "Segoe Script", cursive`;
-          ctx.globalAlpha = 0.5;
-          ctx.strokeStyle = "rgba(10,10,10,0.75)";
-          ctx.lineWidth = Math.max(3, sizePx * 0.08);
-          ctx.strokeText(text, 2, 3);
-          ctx.globalAlpha = 0.92;
-          ctx.fillStyle = color;
-          ctx.fillText(text, 0, 0);
-          if (underline) {
-            const lineW = text.length * sizePx * 0.42;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = Math.max(2, sizePx * 0.045);
-            ctx.beginPath();
-            ctx.moveTo(sizePx * 0.05, sizePx * 0.38);
-            ctx.bezierCurveTo(lineW * 0.3, sizePx * 0.6, lineW * 0.7, sizePx * 0.2, lineW, sizePx * 0.48);
-            ctx.stroke();
-          }
-          ctx.restore();
-          ctx.globalAlpha = 1;
-        };
-
-        const drawThrowie = (
-          word: string,
-          x: number,
-          y: number,
-          fontPx: number,
-          fillTop: string,
-          fillBottom: string,
-          outline: string,
-          forcefield: string,
-          angle: number,
-          scaleX: number
-        ) => {
-          const width = word.length * fontPx * 0.62 * scaleX;
-          const height = fontPx * 1.05;
-          drawOverspray(x, y, width * 1.18, height * 1.28, [fillTop, fillBottom, outline], 220, 0.13);
-
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.rotate(angle);
-          ctx.scale(scaleX, 1);
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.miterLimit = 2;
-          ctx.font = `900 ${fontPx}px Impact, "Arial Black", sans-serif`;
-
-          ctx.globalAlpha = 0.55;
-          ctx.strokeStyle = "rgba(18,18,15,0.72)";
-          ctx.lineWidth = fontPx * 0.36;
-          ctx.strokeText(word, fontPx * 0.04, fontPx * 0.06);
-
-          ctx.globalAlpha = 0.96;
-          ctx.strokeStyle = forcefield;
-          ctx.lineWidth = fontPx * 0.3;
-          ctx.strokeText(word, 0, 0);
-          ctx.strokeStyle = "#161514";
-          ctx.lineWidth = fontPx * 0.2;
-          ctx.strokeText(word, 0, 0);
-          ctx.strokeStyle = outline;
-          ctx.lineWidth = fontPx * 0.105;
-          ctx.strokeText(word, 0, 0);
-
-          const grad = ctx.createLinearGradient(0, -fontPx * 0.52, 0, fontPx * 0.52);
-          grad.addColorStop(0, fillTop);
-          grad.addColorStop(0.56, fillBottom);
-          grad.addColorStop(1, fillTop);
-          ctx.fillStyle = grad;
-          ctx.fillText(word, 0, 0);
-
-          ctx.globalAlpha = 0.45;
-          ctx.strokeStyle = "rgba(255,255,255,0.72)";
-          ctx.lineWidth = Math.max(2, fontPx * 0.035);
-          ctx.strokeText(word, -fontPx * 0.03, -fontPx * 0.09);
-          ctx.globalAlpha = 1;
-          ctx.restore();
-
-          const dripCount = Math.max(4, Math.floor(width / 52));
-          for (let i = 0; i < dripCount; i++) {
-            const px = x - width * 0.43 + i * ((width * 0.86) / (dripCount - 1)) + (Math.random() - 0.5) * 18;
-            const py = y + height * 0.38 + Math.random() * 18;
-            drawDrip(px, py, 18 + Math.random() * 48, i % 2 === 0 ? fillBottom : outline, 3 + Math.random() * 3);
-          }
-        };
-
-        const drawBurner = () => {
-          const x = s * 0.53;
-          const y = s * 0.54;
-          const fontPx = s * 0.2;
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.rotate(-0.045);
-          ctx.transform(1, -0.08, -0.22, 1, 0, 0);
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.font = `900 ${fontPx}px Impact, "Arial Black", sans-serif`;
-
-          ctx.globalAlpha = 0.9;
-          ctx.fillStyle = "#10100f";
-          for (const [ax, ay, rot] of [
-            [-fontPx * 1.4, -fontPx * 0.28, -0.28],
-            [fontPx * 1.45, -fontPx * 0.16, 0.25],
-            [fontPx * 0.8, fontPx * 0.36, 0.52],
-          ] as const) {
-            ctx.save();
-            ctx.translate(ax, ay);
-            ctx.rotate(rot);
-            ctx.beginPath();
-            ctx.moveTo(-fontPx * 0.36, -fontPx * 0.08);
-            ctx.lineTo(fontPx * 0.38, -fontPx * 0.22);
-            ctx.lineTo(fontPx * 0.12, fontPx * 0.16);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-          }
-
-          ctx.globalAlpha = 0.5;
-          ctx.strokeStyle = "rgba(45,15,10,0.8)";
-          ctx.lineWidth = fontPx * 0.34;
-          ctx.strokeText("RIFT", fontPx * 0.09, fontPx * 0.12);
-          ctx.globalAlpha = 0.98;
-          ctx.strokeStyle = "#f2e6d0";
-          ctx.lineWidth = fontPx * 0.25;
-          ctx.strokeText("RIFT", 0, 0);
-          ctx.strokeStyle = "#15110e";
-          ctx.lineWidth = fontPx * 0.16;
-          ctx.strokeText("RIFT", 0, 0);
-          ctx.strokeStyle = "#b8161b";
-          ctx.lineWidth = fontPx * 0.075;
-          ctx.strokeText("RIFT", 0, 0);
-
-          const grad = ctx.createLinearGradient(0, -fontPx * 0.5, 0, fontPx * 0.5);
-          grad.addColorStop(0, "#ffd840");
-          grad.addColorStop(0.47, "#f15f20");
-          grad.addColorStop(1, "#ffe76b");
-          ctx.fillStyle = grad;
-          ctx.fillText("RIFT", 0, 0);
-
-          ctx.globalAlpha = 0.55;
-          ctx.strokeStyle = "#f7f0da";
-          ctx.lineWidth = fontPx * 0.028;
-          ctx.strokeText("RIFT", -fontPx * 0.04, -fontPx * 0.1);
-          ctx.restore();
-          ctx.globalAlpha = 1;
-
-          drawOverspray(x, y, s * 0.86, fontPx * 1.6, ["#ffd840", "#f15f20", "#b8161b", "#f2e6d0"], 360, 0.08);
-          for (let i = 0; i < 10; i++) {
-            drawDrip(
-              s * 0.2 + i * s * 0.07,
-              s * 0.64 + Math.random() * 14,
-              14 + Math.random() * 34,
-              i % 3 === 0 ? "#b8161b" : "#f15f20",
-              2.5 + Math.random() * 3
-            );
-          }
-        };
-
-        // Old paint ghosts and buffed rectangles underneath the newer pieces.
-        drawBuffPatch(s * 0.2, s * 0.25, s * 0.34, s * 0.22, "#77746d", -0.03);
-        drawBuffPatch(s * 0.78, s * 0.42, s * 0.28, s * 0.18, "#9a968b", 0.04);
-        drawBuffPatch(s * 0.55, s * 0.82, s * 0.38, s * 0.12, "#6f6b64", 0.01);
-        drawMarkerTag("NOVA", s * 0.12, s * 0.18, s * 0.08, "#302d2a", -0.12, true);
-        drawMarkerTag("VEX", s * 0.68, s * 0.18, s * 0.07, "#4a1c68", 0.08, true);
-
-        // Newer wall pieces: readable tags and throw-ups instead of decorative streaks.
-        drawThrowie("KENO", s * 0.23, s * 0.36, s * 0.17, "#9ff1ff", "#267dde", "#081f53", "#efe9d5", -0.08, 1.03);
-        drawBurner();
-        drawThrowie("NOX", s * 0.78, s * 0.77, s * 0.18, "#f6b4ff", "#b326c9", "#4a0a57", "#10100e", 0.07, 0.96);
-
-        // Handstyle tags layered over the pieces.
-        drawMarkerTag("aces", s * 0.07, s * 0.88, s * 0.075, "#f3f0df", -0.08, true);
-        drawMarkerTag("ksr", s * 0.34, s * 0.1, s * 0.065, "#11100f", 0.05, false);
-        drawMarkerTag("milo", s * 0.54, s * 0.91, s * 0.07, "#3be4a9", -0.06, true);
-        drawMarkerTag("echo", s * 0.75, s * 0.26, s * 0.064, "#ffefe8", 0.11, true);
-        drawMarkerTag("87", s * 0.89, s * 0.59, s * 0.075, "#10100f", -0.16, false);
-
-        // Torn wheat-paste leftovers and sticker ghosts sit on top in places.
-        for (let i = 0; i < 7; i++) {
-          const rx = 40 + Math.random() * (s - 120);
-          const ry = 20 + Math.random() * (s - 90);
-          const rw = 44 + Math.random() * 58;
-          const rh = 24 + Math.random() * 44;
-          ctx.save();
-          ctx.translate(rx, ry);
-          ctx.rotate((Math.random() - 0.5) * 0.34);
-          ctx.globalAlpha = 0.2 + Math.random() * 0.16;
-          ctx.fillStyle = "#e8e0d0";
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(rw * (0.72 + Math.random() * 0.22), Math.random() * 8);
-          ctx.lineTo(rw, rh * (0.55 + Math.random() * 0.38));
-          ctx.lineTo(rw * (0.18 + Math.random() * 0.18), rh);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        }
-
-        // Cap-control scatter and worn-away paint chips.
-        for (let i = 0; i < 520; i++) {
-          ctx.globalAlpha = 0.045 + Math.random() * 0.1;
-          const speckColors = ["#ffd840", "#f15f20", "#9ff1ff", "#267dde", "#f6b4ff", "#3be4a9", "#f3f0df", "#15110e"];
-          ctx.fillStyle = speckColors[(Math.random() * speckColors.length) | 0];
-          const sx2 = Math.random() * s,
-            sy2 = Math.random() * s;
-          ctx.beginPath();
-          ctx.arc(sx2, sy2, 0.4 + Math.random() * 2.2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
       }
-    );
+      ctx.restore();
+    };
+
+    for (let row = 0; row < 4; row++) {
+      ctx.save();
+      ctx.translate(0, row * panelH);
+      ctx.beginPath();
+      ctx.rect(0, 0, 2048, panelH);
+      ctx.clip();
+      ctx.fillStyle = ["#92958b", "#8e948a", "#999b90", "#91978c"][row];
+      ctx.fillRect(0, 0, 2048, panelH);
+      for (let i = 0; i < 420; i++) {
+        ctx.globalAlpha = 0.035 + random() * 0.06;
+        ctx.fillStyle = i % 3 ? "#616d64" : "#c5c5b3";
+        ctx.beginPath();
+        ctx.ellipse(random() * 2048, random() * panelH, 3 + random() * 37, 2 + random() * 14, random(), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Damp footing and runoff anchor the paint to the wall surface.
+      ctx.globalAlpha = 1;
+      const damp = ctx.createLinearGradient(0, 181, 0, panelH);
+      damp.addColorStop(0, "rgba(54,70,55,0)");
+      damp.addColorStop(1, "rgba(54,70,55,0.3)");
+      ctx.fillStyle = damp;
+      ctx.fillRect(0, 0, 2048, panelH);
+      for (let i = 0; i < 25; i++) {
+        const x = 40 + random() * 1968;
+        ctx.globalAlpha = 0.025 + random() * 0.035;
+        ctx.fillStyle = "#35433a";
+        ctx.fillRect(x, 8, 1 + random() * 7, 65 + random() * 180);
+      }
+
+      for (let col = 0; col < 4; col++) {
+        const piece = pieces[row * 4 + col];
+        ctx.save();
+        ctx.translate(col * 512, 0);
+        ctx.scale(512 / panelW, 1);
+        // Buff paint and an almost-erased older signature sit behind the
+        // new piece. Their off-centre placements leave useful empty wall.
+        ctx.globalAlpha = piece.style === "marker" ? 0.3 : 0.17;
+        ctx.fillStyle = col % 2 ? "#b2b1a3" : "#757e72";
+        ctx.beginPath();
+        const bx = 125 + ((row * 97 + col * 43) % 180);
+        ctx.moveTo(bx, 65);
+        ctx.lineTo(bx + 303, 61 + col * 4);
+        ctx.lineTo(bx + 294, 184);
+        ctx.lineTo(bx - 7, 179);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = "#ddd7c3";
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(bx + 8, 73);
+        ctx.lineTo(bx + 288, 68);
+        ctx.stroke();
+
+        if (piece.style !== "marker") {
+          // Local, restrained overspray; none of the full-wall confetti
+          // that made the old repeated stamp noisy at medium distance.
+          for (let i = 0; i < 95; i++) {
+            const a = random() * Math.PI * 2;
+            const r = Math.sqrt(random());
+            ctx.globalAlpha = 0.04 + random() * 0.05;
+            ctx.fillStyle = i % 2 ? piece.top : piece.bottom;
+            ctx.fillRect(piece.x + Math.cos(a) * r * 230, piece.y + Math.sin(a) * r * 76, 1 + random() * 2, 1);
+          }
+        }
+        drawWord(piece);
+
+        // A few gravity-led paint runs, placed below the actual lettering.
+        if (piece.style !== "marker") {
+          for (let i = 0; i < 3; i++) {
+            const x = piece.x - 115 + i * 105 + random() * 20;
+            const y = piece.y + piece.size * 0.39;
+            const len = 9 + random() * 18;
+            ctx.globalAlpha = 0.62;
+            ctx.strokeStyle = i % 2 ? piece.bottom : "#303830";
+            ctx.lineCap = "round";
+            ctx.lineWidth = 1.2 + random();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + 0.8, Math.min(237, y + len));
+            ctx.stroke();
+          }
+        }
+        if (piece.accent) {
+          drawWord({
+            ...piece,
+            word: piece.accent,
+            style: "marker",
+            x: 651,
+            y: 61,
+            size: 25,
+            angle: -0.09,
+            top: "#343c34",
+            edge: "#a4a99a",
+          });
+        }
+        // Flaked paint, concrete pinholes and one hairline crack unify the
+        // layers without turning every letter into a distressed blur.
+        for (let i = 0; i < 130; i++) {
+          ctx.globalAlpha = 0.08 + random() * 0.16;
+          ctx.fillStyle = i % 4 ? "#9ca193" : "#525f52";
+          ctx.fillRect(62 + random() * 698, 27 + random() * 210, 1 + random() * 3, 0.7 + random() * 1.4);
+        }
+        if ((row + col) % 3 === 0) {
+          ctx.globalAlpha = 0.23;
+          ctx.strokeStyle = "#4d5b4f";
+          ctx.lineWidth = 0.65;
+          ctx.beginPath();
+          ctx.moveTo(727, 10);
+          ctx.lineTo(715, 64);
+          ctx.lineTo(725, 88);
+          ctx.lineTo(701, 150);
+          ctx.lineTo(707, 203);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // Keep the atlas sampling margins free of lettering; box ends use
+      // the first 24px, and filtered long faces omit the top/bottom 8px.
+      ctx.globalAlpha = 0.42;
+      ctx.fillStyle = "#969c8f";
+      ctx.fillRect(0, 0, 32, panelH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
   }
 
   // Hoarding posters — original artwork painted here (no photos, nothing to

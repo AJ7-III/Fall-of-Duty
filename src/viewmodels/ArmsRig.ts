@@ -1,4 +1,6 @@
-import { Quaternion, TransformNode, Vector3, VertexBuffer } from "@babylonjs/core";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import type { AssetContainer, Mesh, Scene } from "@babylonjs/core";
 import { whenSoldierModelReady } from "../bots/SoldierAssets";
 import { soldierMaterialFor } from "../bots/SoldierBody";

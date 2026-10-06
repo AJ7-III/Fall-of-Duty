@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core";
-import { FreeCamera, Vector3 } from "@babylonjs/core";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 export class CameraRig {
   public camera: FreeCamera;

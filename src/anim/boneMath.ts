@@ -1,4 +1,4 @@
-import { Matrix, Quaternion, Vector3 } from "@babylonjs/core";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core";
 
 // Skeleton math shared by the soldier bodies and the first-person arms:

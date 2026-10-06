@@ -1,15 +1,11 @@
 import type { Scene } from "@babylonjs/core";
-import {
-  Vector3,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  Color3,
-  PointLight,
-  Quaternion,
-  Matrix,
-  DynamicTexture,
-} from "@babylonjs/core";
+import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { PointLight } from "@babylonjs/core/Lights/pointLight";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 
 export class Effects {
   private audioCtx: AudioContext | null = null;

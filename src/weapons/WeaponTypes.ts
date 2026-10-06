@@ -1,4 +1,5 @@
-import { Ray, Vector3 } from "@babylonjs/core";
+import { Ray } from "@babylonjs/core/Culling/ray";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh, Camera, Node, Scene } from "@babylonjs/core";
 import type { Target } from "../world/Target";
 import type { CarWreck } from "../world/CarWreck";

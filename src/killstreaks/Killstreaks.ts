@@ -1,4 +1,8 @@
-import { MeshBuilder, StandardMaterial, Color3, TransformNode, Vector3 } from "@babylonjs/core";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { FreeCamera, Mesh, Scene } from "@babylonjs/core";
 import type { PlayerController } from "../player/PlayerController";
 import type { CameraRig } from "../player/CameraRig";

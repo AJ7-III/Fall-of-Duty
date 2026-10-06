@@ -1,16 +1,13 @@
-import {
-  ArcRotateCamera,
-  Color3,
-  Color4,
-  DirectionalLight,
-  Engine,
-  HemisphericLight,
-  LoadAssetContainerAsync,
-  Scene,
-  TransformNode,
-  Vector3,
-} from "@babylonjs/core";
-import "@babylonjs/loaders/glTF/2.0";
+import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { Engine } from "@babylonjs/core/Engines/engine";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
+import { Scene } from "@babylonjs/core/scene";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import "@babylonjs/loaders/glTF/2.0/glTFLoader";
 import { assetUrl } from "../assets/paths";
 import { soldierMaterialFor } from "../bots/SoldierBody";
 import type { GraphicsQuality } from "./Settings";

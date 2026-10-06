@@ -1,4 +1,6 @@
-import { Constants, HDRFiltering, RawCubeTexture } from "@babylonjs/core";
+import { Constants } from "@babylonjs/core/Engines/constants";
+import { HDRFiltering } from "@babylonjs/core/Materials/Textures/Filtering/hdrFiltering";
+import { RawCubeTexture } from "@babylonjs/core/Materials/Textures/rawCubeTexture";
 import type { Scene } from "@babylonjs/core";
 
 // The yard as a reflection environment: what wet steel, glass, chrome and

@@ -1,20 +1,14 @@
-import {
-  Scene,
-  Mesh,
-  MeshBuilder,
-  Vector3,
-  Vector4,
-  Color3,
-  Color4,
-  Matrix,
-  Quaternion,
-  HemisphericLight,
-  DirectionalLight,
-  ShadowGenerator,
-  PBRMaterial,
-  RenderTargetTexture,
-  ParticleSystem,
-} from "@babylonjs/core";
+import { Scene } from "@babylonjs/core/scene";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Vector3, Vector4, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { RenderTargetTexture } from "@babylonjs/core/Materials/Textures/renderTargetTexture";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import type { Material } from "@babylonjs/core";
 import type { WorldMaterials } from "./materials/WorldMaterials";
 import { flatMat } from "../rendering/materials/canvas";
@@ -147,7 +141,7 @@ export class ShipBoxMap {
     walkway("walkRingW", 1.8, 28.2, -15.0, 0, 1, 21);
 
     // Perimeter: concrete walls plastered in graffiti, concrete cap, barbed wire
-    const wallMat = this.materials.createGraffitiWallMaterial(6, 1);
+    const wallMat = this.materials.createGraffitiWallMaterial();
     const capMat = this.materials.createConcreteMaterial(12, 1);
     const metalMat = this.materials.createMetalMaterial();
 
@@ -159,8 +153,8 @@ export class ShipBoxMap {
       ["wallE", 16.3, 0, 0.6, 33.8],
       ["wallW", -16.3, 0, 0.6, 33.8],
     ];
-    for (const [name, cx, cz, w, d] of sides) {
-      this.box(name, w, wallH, d, cx, cz, wallMat, 0, false);
+    for (const [row, [name, cx, cz, w, d]] of sides.entries()) {
+      this.box(name, w, wallH, d, cx, cz, wallMat, 0, false, null, ShipBoxMap.graffitiWallUV(w, d, row));
       this.box(`${name}_cap`, w + 0.16, 0.15, d + 0.16, cx, cz, capMat, wallH, false);
 
       // barbed-wire posts + two wire runs along the cap
@@ -277,6 +271,19 @@ export class ShipBoxMap {
     return [face(w, h), face(w, h), face(d, h), face(d, h), face(w, d), face(w, d)];
   }
 
+  // Each 33.8m face reads one complete 2048×256 atlas strip instead of
+  // tiling a square painting. Short faces/top/bottom stay plain concrete.
+  // Vertical inset matches WorldMaterials' 8px gutters and keeps bilinear
+  // filtering from borrowing a neighbouring wall's paint. DynamicTexture
+  // uploads canvas y downward, so the first painted strip is at high v.
+  private static graffitiWallUV(w: number, d: number, row: number): Vector4[] {
+    const v0 = 1 - (row + 1) / 4 + 8 / 1024;
+    const v1 = 1 - row / 4 - 8 / 1024;
+    const long = (): Vector4 => new Vector4(0, v0, 1, v1);
+    const plain = (): Vector4 => new Vector4(2 / 2048, v0, 24 / 2048, v1);
+    return w > d ? [long(), long(), plain(), plain(), plain(), plain()] : [plain(), plain(), long(), long(), plain(), plain()];
+  }
+
   private box(
     name: string,
     w: number,
@@ -287,11 +294,12 @@ export class ShipBoxMap {
     mat: Material,
     yBase: number = 0,
     collide: boolean = true,
-    uvRef: [number, number] | null = null
+    uvRef: [number, number] | null = null,
+    faceUV: Vector4[] | null = null
   ): Mesh {
     const m = MeshBuilder.CreateBox(
       name,
-      { width: w, height: h, depth: d, wrap: true, faceUV: ShipBoxMap.boxUV(w, h, d, uvRef) },
+      { width: w, height: h, depth: d, wrap: true, faceUV: faceUV ?? ShipBoxMap.boxUV(w, h, d, uvRef) },
       this.scene
     );
     m.position.set(x, yBase + h / 2, z);

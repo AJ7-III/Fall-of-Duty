@@ -1,4 +1,6 @@
-import { Constants, DynamicTexture, Texture } from "@babylonjs/core";
+import { Constants } from "@babylonjs/core/Engines/constants";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { BaseTexture, Scene } from "@babylonjs/core";
 import type { SoldierTint } from "./SoldierBody";
 

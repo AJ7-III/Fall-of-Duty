@@ -1,4 +1,9 @@
-import { MeshBuilder, PBRMaterial, DynamicTexture, Color3, Color4, Vector3, ParticleSystem } from "@babylonjs/core";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { flatMat } from "../rendering/materials/canvas";
 import type { AbstractMesh, Material, PickingInfo, Scene, Mesh, TransformNode } from "@babylonjs/core";
 import type { WorldMaterials } from "./materials/WorldMaterials";

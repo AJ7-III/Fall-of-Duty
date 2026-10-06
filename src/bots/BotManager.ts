@@ -1,4 +1,4 @@
-import { Vector3 } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core";
 import type { PlayerController } from "../player/PlayerController";
 import { BotNav } from "./BotNav";

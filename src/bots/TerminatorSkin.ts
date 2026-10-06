@@ -1,4 +1,8 @@
-import { Color3, Constants, DynamicTexture, PBRMaterial, Texture } from "@babylonjs/core";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Constants } from "@babylonjs/core/Engines/constants";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { yardEnvironment } from "../rendering/materials/environment";
 import type { BaseTexture, Material, Scene } from "@babylonjs/core";
 

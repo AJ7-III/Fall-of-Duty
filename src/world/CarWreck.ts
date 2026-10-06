@@ -1,4 +1,7 @@
-import { MeshBuilder, Color3, Vector3, TransformNode } from "@babylonjs/core";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh, PickingInfo, Scene, Mesh, Material, ParticleSystem } from "@babylonjs/core";
 import type { WorldMaterials } from "./materials/WorldMaterials";
 import type { Effects } from "../rendering/Effects";

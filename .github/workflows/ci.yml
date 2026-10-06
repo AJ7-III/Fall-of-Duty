@@ -19,6 +19,12 @@ jobs:
 
       - run: npm ci
 
+      - run: npx playwright install --with-deps chromium firefox
+
       - run: npm run check
+
+      - run: npm run test:browser
+        env:
+          FOD_REAL_POINTER_LOCK: "1"
 
       - run: npm run build

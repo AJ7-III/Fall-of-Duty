@@ -4,11 +4,11 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["dist/", "node_modules/", ".screenshots/"]),
+  globalIgnores(["dist/", "node_modules/", ".screenshots/", "test-results/", "playwright-report/"]),
 
   // Shared TypeScript rules for the game source and the Vite config.
   {
-    files: ["src/**/*.ts", "vite.config.ts"],
+    files: ["src/**/*.ts", "vite.config.ts", "playwright.config.ts"],
     extends: [js.configs.recommended, tseslint.configs.recommended],
     rules: {
       // Animation code declares a pose variable up front and assigns it in
@@ -16,6 +16,7 @@ export default defineConfig([
       // not a bug.
       "no-useless-assignment": "off",
       // Type-only imports stay type-only so the bundler can drop them
+      "@typescript-eslint/no-restricted-imports": ["error", { paths: [{ name: "@babylonjs/core", allowTypeImports: true, message: "Import runtime values from specific Babylon modules to preserve the bundle budget." }] }],
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -30,18 +31,18 @@ export default defineConfig([
 
   // Game source runs in the browser.
   {
-    files: ["src/**/*.ts"],
+    files: ["src/**/*.ts", "tests/browser/**/*.mjs"],
     languageOptions: { globals: { ...globals.browser } },
   },
 
   // Config files and regression tests run under Node.
   {
-    files: ["vite.config.ts", "eslint.config.js", "tests/**/*.mjs"],
+    files: ["vite.config.ts", "playwright.config.ts", "eslint.config.js", "tests/**/*.mjs", "scripts/**/*.mjs"],
     languageOptions: { globals: { ...globals.node } },
   },
 
   {
-    files: ["eslint.config.js", "tests/**/*.mjs"],
+    files: ["eslint.config.js", "tests/**/*.mjs", "scripts/**/*.mjs"],
     extends: [js.configs.recommended],
   },
 ]);

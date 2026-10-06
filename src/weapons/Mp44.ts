@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core";
-import { Vector3 } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Input } from "../engine/Input";
 import type { CameraRig } from "../player/CameraRig";
 import { ADSAnimator } from "./ADSAnimator";
@@ -103,7 +103,9 @@ export class Mp44 implements Weapon {
       this.startReload();
       return;
     }
-    if (canUseTrigger && input.isMouseButtonDown(0)) {
+    // Preserve a tap that begins and ends between frames, including Fast's
+    // capped loop. Holding the button still drives automatic fire.
+    if (canUseTrigger && (input.isMouseButtonDown(0) || input.isMouseButtonPressed(0))) {
       if (this.clipAmmo > 0 && this.fireCooldown <= 0) {
         this.fire(scene, cameraRig, effects);
       } else if (this.clipAmmo === 0 && input.isMouseButtonPressed(0)) {

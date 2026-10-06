@@ -1,4 +1,4 @@
-import { Vector3 } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { FreeCamera, Scene } from "@babylonjs/core";
 import { buildSoldier, playerMaterials } from "../bots/SoldierBody";
 import type { SoldierRig } from "../bots/SoldierBody";
@@ -142,7 +142,7 @@ export class DeathCam {
     this.death.update(dt);
 
     // Time: slow through the collapse, back to speed once the body is down
-    const impact = 1.35;
+    const impact = this.death.impactTime;
     const scale =
       this.t < impact
         ? DeathCam.SLOW_SCALE

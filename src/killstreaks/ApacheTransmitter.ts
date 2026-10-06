@@ -1,4 +1,7 @@
-import { MeshBuilder, StandardMaterial, Color3, TransformNode } from "@babylonjs/core";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { FreeCamera, Scene, Mesh } from "@babylonjs/core";
 
 type TransmitterPhase = "away" | "raising" | "arming" | "lowering";

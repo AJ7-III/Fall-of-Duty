@@ -1,4 +1,10 @@
-import { Color3, FresnelParameters, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3 } from "@babylonjs/core";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { FresnelParameters } from "@babylonjs/core/Materials/fresnelParameters";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core";
 import { flatMat, makeCanvasTexture, stdMat } from "../rendering/materials/canvas";
 import { createLimb, createTaperedLimb, handAnchor, mergeWeaponParts, prim } from "./kit";

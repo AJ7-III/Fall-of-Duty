@@ -155,7 +155,11 @@
               </button>
             </div>
 
-            <button id="btn-start" class="start-btn">START MATCH</button>
+            <div id="startup-status" class="startup-status" role="status" aria-live="polite">
+              <p id="startup-message">Loading the yard and soldier…</p>
+              <button id="btn-retry" class="menu-btn hidden" type="button">RETRY LOADING</button>
+            </div>
+            <button id="btn-start" class="start-btn" disabled>START MATCH</button>
           </div>
         </div>
       </div>

@@ -1,6 +1,9 @@
-import { Vector3 } from "@babylonjs/core";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene, Mesh, TransformNode } from "@babylonjs/core";
 import { PlayerController } from "../player/PlayerController";
+import { BotRouteMemory, selectSearchNode, selectPatrolNode } from "./BotNavigation";
+import { observePlayer, samplePlayerBody, SIGHT_SAMPLES } from "./BotPerception";
+import { angleDelta, rayVsPlayerBody, selectWeapon } from "./BotCombat";
 import { BotNav } from "./BotNav";
 import { BOT_WEAPONS, rangeCurve, rand, DEG } from "./BotConfig";
 import type { BotDifficulty, BotWeaponProfile } from "./BotConfig";
@@ -52,22 +55,6 @@ const MAX_SHOT_RANGE = 60;
 const MUZZLE_HEIGHT = EYE_HEIGHT * 0.88;
 const SHOULDER_RAISE = 0.27;
 
-// Silhouette samples for sight and aim. A single eye-to-eye ray meant a car
-// hood clipping that one line made the player fully invisible; sampling the
-// body turns "visible" into a fraction that sightMinExposure can threshold.
-// h is a fraction of the player's CURRENT eye height (crouching shrinks the
-// silhouette for free); lat is meters across the bot's sight line, kept
-// inside the 0.42 body cylinder so shots aimed there can land. aimRank picks
-// which visible point to shoot: chest first, shins as a last resort.
-const SIGHT_SAMPLES: ReadonlyArray<{ h: number; lat: number; aimRank: number }> = [
-  { h: 1.0, lat: 0, aimRank: 3 }, // head
-  { h: 0.8, lat: 0, aimRank: 0 }, // chest (the old aim point)
-  { h: 0.74, lat: -0.3, aimRank: 1 }, // shoulders — catch a sideways peek
-  { h: 0.74, lat: 0.3, aimRank: 2 },
-  { h: 0.45, lat: 0, aimRank: 4 }, // pelvis
-  { h: 0.14, lat: 0, aimRank: 5 }, // shins showing under a car
-];
-
 export class Bot {
   public position: Vector3;
   public yaw = 0;
@@ -116,6 +103,7 @@ export class Bot {
   private burstLeft = 0;
   private burstTimer = 0;
   private fireTimer = 0;
+  private sight = { visible: false, exposure: 0, aimSample: 1 };
   private aimSample = 1; // SIGHT_SAMPLES index combat shoots at — best-ranked visible point
 
   // Movement / navigation
@@ -125,9 +113,7 @@ export class Bot {
   private destNode = -1;
   private reachedDest = false;
   private previousDestNode = -1; // recent target memory; discourages instant backtracking
-  private recentDestNodes = new Int32Array(7).fill(-1);
-  private recentDestCursor = 0;
-  private recentDestCount = 0;
+  private routeMemory = new BotRouteMemory();
   private wantSprint = false;
   private moveSpeed = 0; // actual horizontal speed, for animation + shot spread
   private holdUntil = 0; // combat: route freshness deadline, or the end of a held firing position
@@ -301,9 +287,7 @@ export class Bot {
     this.destNode = -1;
     this.reachedDest = false;
     this.previousDestNode = -1;
-    this.recentDestNodes.fill(-1);
-    this.recentDestCursor = 0;
-    this.recentDestCount = 0;
+    this.routeMemory.reset();
     this.scanUntil = 0;
     this.searchStopsLeft = 0;
     this.retreatUntil = 0;
@@ -441,29 +425,10 @@ export class Bot {
     // Occlusion samples the whole silhouette: exposure is the fraction of
     // body points with a clear line, and skill (sightMinExposure) decides
     // how much of a man it takes to count as contact.
-    let visible = false;
-    let exposure = 0;
-    if (!p.isDead && dist < d.visionRange && dist > 0.001) {
-      const alert = bb.detection > 0.5 || bb.timeSinceSeen < 6;
-      const coneCos = Math.cos(alert ? 1.31 : 0.96); // 75 deg / 55 deg half-angle
-      const facingDot = (Math.sin(this.yaw) * dx + Math.cos(this.yaw) * dz) / dist;
-      if (facingDot > coneCos) {
-        Bot.TMP_A.set(this.position.x, this.position.y + EYE_HEIGHT, this.position.z);
-        let seenCount = 0;
-        let bestRank = Infinity;
-        for (let i = 0; i < SIGHT_SAMPLES.length; i++) {
-          this.bodySample(p, i, Bot.TMP_B);
-          if (BotNav.losBlocked(Bot.TMP_A, Bot.TMP_B)) continue;
-          seenCount++;
-          if (SIGHT_SAMPLES[i].aimRank < bestRank) {
-            bestRank = SIGHT_SAMPLES[i].aimRank;
-            this.aimSample = i;
-          }
-        }
-        exposure = seenCount / SIGHT_SAMPLES.length;
-        visible = exposure >= d.sightMinExposure;
-      }
-    }
+    this.sight.aimSample = this.aimSample;
+    observePlayer(this.position, this.yaw, p, d, bb.detection > 0.5 || bb.timeSinceSeen < 6, this.sight);
+    const { visible, exposure } = this.sight;
+    this.aimSample = this.sight.aimSample;
 
     if (visible) {
       let fillRate = 1.9 - 1.5 * (dist / d.visionRange);
@@ -698,82 +663,21 @@ export class Bot {
     return { x, z };
   }
 
-  private routeMemoryPenalty(node: number): number {
-    let penalty = 1;
-    if (node === this.destNode || node === this.previousDestNode || node === this.lastPatrolNode) penalty *= 0.22;
-    for (let i = 0; i < this.recentDestCount; i++) {
-      const recent = this.recentDestNodes[i];
-      if (recent < 0) continue;
-      if (node === recent) {
-        penalty *= 0.12;
-      } else {
-        const dx = BotNav.xs[node] - BotNav.xs[recent];
-        const dz = BotNav.zs[node] - BotNav.zs[recent];
-        if (dx * dx + dz * dz < 2.8 * 2.8) penalty *= 0.55;
-      }
-    }
-    if (this.previousDestNode >= 0) {
-      const dx = BotNav.xs[node] - BotNav.xs[this.previousDestNode];
-      const dz = BotNav.zs[node] - BotNav.zs[this.previousDestNode];
-      if (dx * dx + dz * dz < 2.6 * 2.6) penalty *= 0.45;
-    }
-    return penalty;
-  }
-
-  private rememberDestination(node: number): void {
-    if (node < 0) return;
-    const prevIndex = (this.recentDestCursor + this.recentDestNodes.length - 1) % this.recentDestNodes.length;
-    if (this.recentDestCount > 0 && this.recentDestNodes[prevIndex] === node) return;
-    this.recentDestNodes[this.recentDestCursor] = node;
-    this.recentDestCursor = (this.recentDestCursor + 1) % this.recentDestNodes.length;
-    this.recentDestCount = Math.min(this.recentDestCount + 1, this.recentDestNodes.length);
-  }
+  private routeMemoryPenalty = (node: number): number =>
+    this.routeMemory.penalty(node, this.destNode, this.previousDestNode, this.lastPatrolNode);
 
   private pickSearchNode(ctx: BotContext, baseRadius = 3.2, maxRadius = 10): number {
     const likely = this.predictedEnemyPosition(ctx, 6.5);
-    const currentToLikelyX = likely.x - this.position.x;
-    const currentToLikelyZ = likely.z - this.position.z;
-    const currentToLikely = Math.sqrt(currentToLikelyX * currentToLikelyX + currentToLikelyZ * currentToLikelyZ);
     const ageSource = this.bb.lastKnownValid ? this.intelAt : this.suspicionAt;
     const age = Math.max(0, ctx.now - ageSource);
     const sweepRadius = Math.min(maxRadius, baseRadius + age * 0.32 + (5 - Math.max(0, this.searchStopsLeft)) * 0.8);
-    let best = -1;
-    let bestScore = 0;
-
-    for (let i = 0; i < BotNav.count; i++) {
-      if (!BotNav.walkable[i]) continue;
-      const nx = BotNav.xs[i];
-      const nz = BotNav.zs[i];
-      const runX = nx - this.position.x;
-      const runZ = nz - this.position.z;
-      const runDist = Math.sqrt(runX * runX + runZ * runZ);
-      if (runDist < 1.8) continue;
-
-      const predX = nx - likely.x;
-      const predZ = nz - likely.z;
-      const predDist = Math.sqrt(predX * predX + predZ * predZ);
-      if (predDist > sweepRadius) continue;
-
-      const toward =
-        currentToLikely > 0.001 && runDist > 0.001
-          ? Math.max(0, (currentToLikelyX * runX + currentToLikelyZ * runZ) / (currentToLikely * runDist))
-          : 0.5;
-      const pressure = currentToLikely > 0.001 ? 0.75 + 0.45 * Math.max(0, (currentToLikely - predDist) / currentToLikely) : 1;
-      const proximity = 1 / (1 + predDist * 0.38);
-      const stretch = Math.min(1, runDist / 5);
-      const cover = BotNav.cover[i] ? 1.12 : 1;
-      const score = proximity * stretch * (0.65 + 0.35 * toward) * pressure * cover * this.routeMemoryPenalty(i) * rand(0.9, 1.1);
-      if (score > bestScore) {
-        bestScore = score;
-        best = i;
-      }
-    }
-
-    if (best >= 0) return best;
-    const led = BotNav.nearestNode(likely.x, likely.z);
-    if (led >= 0) return led;
-    const raw = this.bb.lastKnownValid ? this.lastKnown : this.suspicion;
-    return BotNav.nearestNode(raw.x, raw.z);
+    return selectSearchNode(
+      this.position,
+      likely,
+      this.bb.lastKnownValid ? this.lastKnown : this.suspicion,
+      sweepRadius,
+      this.routeMemoryPenalty
+    );
   }
 
   private pickHuntNode(ctx: BotContext): number {
@@ -781,48 +685,16 @@ export class Bot {
     return this.pickSearchNode(ctx, 5.5, 13);
   }
 
-  // Where to wander: patrol like a person walking a yard, not a particle.
-  // Uniform random nodes produced the "stupid" legs — two-step shuffles,
-  // unmotivated about-faces, dead-corner dawdling. Sample a handful of
-  // candidates and score for what a human would actually do: cover a real
-  // stretch of ground, keep roughly the heading the body already has, drift
-  // toward the middle where the action lives, hug lanes with cover nearby,
-  // and don't re-walk the leg just finished. The jitter keeps two bots (or
-  // two visits) from ever choosing identically.
   private pickPatrolNode(ctx: BotContext): number {
-    let best = -1;
-    let bestScore = 0;
-    const hasSuspicion = this.suspicionValid && !ctx.player.isDead;
-    for (let attempt = 0; attempt < 18; attempt++) {
-      const n = BotNav.randomNodeNear(this.position.x, this.position.z, 13);
-      if (n < 0 || n === this.lastPatrolNode || n === this.previousDestNode) continue;
-      const dx = BotNav.xs[n] - this.position.x;
-      const dz = BotNav.zs[n] - this.position.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist < 3.4) continue; // a shuffle, not a patrol leg
-      const stretch = Math.min(1, dist / 8);
-      const ahead = 0.55 + 0.45 * ((Math.sin(this.yaw) * dx + Math.cos(this.yaw) * dz) / dist);
-      const centerDist = Math.sqrt(BotNav.xs[n] * BotNav.xs[n] + BotNav.zs[n] * BotNav.zs[n]);
-      const central = 1.15 - 0.3 * Math.min(1, centerDist / 15);
-      const cover = BotNav.cover[n] ? 1 + this.difficulty.coverPreference * 0.35 : 1;
-      let suspicionBias = 1;
-      if (hasSuspicion) {
-        const currentX = this.suspicion.x - this.position.x;
-        const currentZ = this.suspicion.z - this.position.z;
-        const candX = this.suspicion.x - BotNav.xs[n];
-        const candZ = this.suspicion.z - BotNav.zs[n];
-        const currentDist = Math.sqrt(currentX * currentX + currentZ * currentZ);
-        const candDist = Math.sqrt(candX * candX + candZ * candZ);
-        suspicionBias = 0.8 + Math.max(-0.2, Math.min(0.6, (currentDist - candDist) / Math.max(1, currentDist)));
-      }
-      const score = stretch * ahead * central * cover * suspicionBias * this.routeMemoryPenalty(n) * rand(0.85, 1.15);
-      if (score > bestScore) {
-        bestScore = score;
-        best = n;
-      }
-    }
-    // boxed into a corner where every sample failed: take anything walkable
-    return best >= 0 ? best : BotNav.randomNodeNear(this.position.x, this.position.z, 12);
+    return selectPatrolNode(
+      this.position,
+      this.yaw,
+      this.lastPatrolNode,
+      this.previousDestNode,
+      this.difficulty.coverPreference,
+      this.suspicionValid && !ctx.player.isDead ? this.suspicion : null,
+      this.routeMemoryPenalty
+    );
   }
 
   // Weapon selection / reload discipline — the utility scorer of the spec:
@@ -861,17 +733,8 @@ export class Bot {
     this.weaponEvalAt = ctx.now + 1.5;
 
     const dist = bb.canSeePlayer || bb.lastKnownValid ? bb.distanceToPlayer : 10;
-    const primaryDry = this.weapons[0].clip === 0 ? 1.8 : 1;
-    const scores = this.weapons.map((w, i) => {
-      const ammo = 0.3 + 0.7 * (w.clip / w.profile.magSize);
-      const sidearmBonus = i === 1 ? primaryDry * 0.75 : 1;
-      return rangeCurve(dist, w.profile.range) * ammo * sidearmBonus;
-    });
-    const best = scores[0] >= scores[1] ? 0 : 1;
-    const margin = 1 + (1 - d.weaponSwitchSkill) * 0.9;
-    if (best !== this.weaponIndex && scores[best] > scores[this.weaponIndex] * margin) {
-      this.startSwitch(best);
-    }
+    const best = selectWeapon(this.weapons, this.weaponIndex, dist, d.weaponSwitchSkill);
+    if (best !== this.weaponIndex) this.startSwitch(best);
   }
 
   private startSwitch(index: number): void {
@@ -940,7 +803,7 @@ export class Bot {
         // reward swinging wide of the player->bot axis
         const a1 = Math.atan2(this.position.x - px, this.position.z - pz);
         const a2 = Math.atan2(nx - px, nz - pz);
-        const swing = Math.abs(Bot.angDelta(a1, a2));
+        const swing = Math.abs(angleDelta(a1, a2));
         score *= swing > 0.9 && swing < 2.3 ? 1.4 : 0.75;
       }
       score *= rand(0.85, 1.15); // never metronomic
@@ -1001,10 +864,10 @@ export class Bot {
       this.destNode = -1;
     } else if (oldDest >= 0 && oldDest !== node) {
       this.previousDestNode = oldDest;
-      this.rememberDestination(node);
+      this.routeMemory.remember(node);
       this.reverseTimer = 0;
     } else {
-      this.rememberDestination(node);
+      this.routeMemory.remember(node);
       this.reverseTimer = 0;
     }
   }
@@ -1061,7 +924,7 @@ export class Bot {
       this.burstLeft = 0;
       bb.hasLineOfFire = false;
       // muzzle drifts back to where the feet are going
-      this.aimYaw += Bot.angDelta(this.aimYaw, this.yaw) * (1 - Math.exp(-6 * dt));
+      this.aimYaw += angleDelta(this.aimYaw, this.yaw) * (1 - Math.exp(-6 * dt));
       this.aimPitch *= Math.exp(-6 * dt);
       return;
     }
@@ -1082,12 +945,12 @@ export class Bot {
       let bestRank = Infinity;
       for (let i = 0; i < SIGHT_SAMPLES.length; i++) {
         if (SIGHT_SAMPLES[i].aimRank >= bestRank) continue;
-        this.bodySample(p, i, Bot.TMP_B);
+        samplePlayerBody(this.position, p, i, Bot.TMP_B);
         if (BotNav.losBlocked(Bot.TMP_A, Bot.TMP_B)) continue;
         bestRank = SIGHT_SAMPLES[i].aimRank;
         this.aimSample = i;
       }
-      this.bodySample(p, this.aimSample, Bot.TMP_B);
+      samplePlayerBody(this.position, p, this.aimSample, Bot.TMP_B);
       tx = Bot.TMP_B.x;
       ty = Bot.TMP_B.y;
       tz = Bot.TMP_B.z;
@@ -1105,7 +968,7 @@ export class Bot {
 
     // Smoothed pursuit of (target + human error)
     const chase = 1 - Math.exp(-d.aimSettleSpeed * 2.2 * dt);
-    this.aimYaw += Bot.angDelta(this.aimYaw, this.desiredYaw + this.errYaw) * chase;
+    this.aimYaw += angleDelta(this.aimYaw, this.desiredYaw + this.errYaw) * chase;
     this.aimPitch += (this.desiredPitch + this.errPitch - this.aimPitch) * chase;
 
     Bot.TMP_A.set(this.position.x, this.position.y + MUZZLE_HEIGHT, this.position.z);
@@ -1125,7 +988,7 @@ export class Bot {
     // a burst is running the rounds keep coming as long as the muzzle is
     // roughly on (tracking a strafing target lags a few degrees — that is
     // what the per-shot spread is for, not a reason to stop shooting)
-    const aimOff = Math.abs(Bot.angDelta(this.aimYaw, this.desiredYaw));
+    const aimOff = Math.abs(angleDelta(this.aimYaw, this.desiredYaw));
     const onTarget = aimOff < d.onTargetDegrees * DEG;
     if (this.burstLeft > 0) {
       if (this.fireTimer <= 0 && aimOff < Math.max(8, d.onTargetDegrees * 2.5) * DEG) this.fire(ctx);
@@ -1171,7 +1034,7 @@ export class Bot {
 
     // Resolve the round: nearest of world geometry vs the player's capsule
     const tWorld = BotNav.rayHitWorld(muzzlePos, dir, MAX_SHOT_RANGE, Bot.TMP_POINT, Bot.TMP_NORMAL);
-    const tPlayer = p.isDead ? Infinity : Bot.rayVsBody(muzzlePos, dir, p);
+    const tPlayer = p.isDead ? Infinity : rayVsPlayerBody(muzzlePos, dir, p);
 
     const tracerEnd = Bot.TMP_B;
     if (tPlayer < tWorld) {
@@ -1216,46 +1079,8 @@ export class Bot {
   // World position of silhouette sample i: a fraction of the player's current
   // eye height plus a lateral offset perpendicular to this bot's sight line
   // (so the "shoulder" points straddle whatever edge the player peeks).
-  private bodySample(p: PlayerController, i: number, out: Vector3): void {
-    const s = SIGHT_SAMPLES[i];
-    let rx = 0;
-    let rz = 0;
-    if (s.lat !== 0) {
-      const dx = p.position.x - this.position.x;
-      const dz = p.position.z - this.position.z;
-      const h = Math.sqrt(dx * dx + dz * dz);
-      if (h > 1e-4) {
-        rx = dz / h;
-        rz = -dx / h;
-      }
-    }
-    out.set(p.position.x + rx * s.lat, p.position.y + p.eyeHeight * s.h, p.position.z + rz * s.lat);
-  }
-
   // Segment vs the player's vertical cylinder (radius matches the collision
   // solver's). Returns the hit distance or Infinity.
-  private static rayVsBody(origin: Vector3, dir: Vector3, p: PlayerController): number {
-    const rx = origin.x - p.position.x;
-    const rz = origin.z - p.position.z;
-    const a = dir.x * dir.x + dir.z * dir.z;
-    if (a < 1e-8) return Infinity;
-    const b = 2 * (rx * dir.x + rz * dir.z);
-    const r = 0.42;
-    const c = rx * rx + rz * rz - r * r;
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return Infinity;
-    let t = (-b - Math.sqrt(disc)) / (2 * a);
-    if (t < 0) {
-      // Muzzle already inside the cylinder (point-blank): take the exit
-      // root so contact shots still land instead of passing clean through
-      t = (-b + Math.sqrt(disc)) / (2 * a);
-      if (t < 0) return Infinity;
-    }
-    const y = origin.y + dir.y * t;
-    if (y < p.position.y || y > p.position.y + p.eyeHeight + 0.15) return Infinity;
-    return t;
-  }
-
   // ----------------------------------------------------------------- motor
 
   private motor(ctx: BotContext, dt: number): void {
@@ -1321,7 +1146,7 @@ export class Bot {
     if (bb.mode === "search" && this.scanUntil > ctx.now) {
       targetYaw = this.scanBaseYaw + Math.sin((this.scanUntil - ctx.now) * 2.4) * 1.25;
     }
-    this.yaw += Bot.angDelta(this.yaw, targetYaw) * (1 - Math.exp(-(engaged ? 11 : 7) * dt));
+    this.yaw += angleDelta(this.yaw, targetYaw) * (1 - Math.exp(-(engaged ? 11 : 7) * dt));
 
     // Same gravity, same solver, same limits as the player
     this.velocity.y += PlayerController.GRAVITY * dt;
@@ -1420,12 +1245,5 @@ export class Bot {
     // and the spine leans into the aim while engaged
     this.rig.body.setAim(this.gunPitch, engaged);
     this.rig.body.update(dt, this.moveSpeed);
-  }
-
-  private static angDelta(from: number, to: number): number {
-    let d = (to - from) % (Math.PI * 2);
-    if (d > Math.PI) d -= Math.PI * 2;
-    if (d < -Math.PI) d += Math.PI * 2;
-    return d;
   }
 }

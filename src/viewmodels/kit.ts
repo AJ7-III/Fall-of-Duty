@@ -1,4 +1,7 @@
-import { Mesh, MeshBuilder, Quaternion, TransformNode, Vector3 } from "@babylonjs/core";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { DynamicTexture, Material, Scene } from "@babylonjs/core";
 import { frameQuat } from "../anim/boneMath";
 

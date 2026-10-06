@@ -1,4 +1,7 @@
-import { Engine, Scene, Color4, Tools } from "@babylonjs/core";
+import { Engine } from "@babylonjs/core/Engines/engine";
+import { Scene } from "@babylonjs/core/scene";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Tools } from "@babylonjs/core/Misc/tools";
 import { Time } from "./Time";
 import { Input } from "./Input";
 import { WorldMaterials } from "../world/materials/WorldMaterials";
@@ -65,6 +68,8 @@ export class Game {
   private hudRootEl = document.getElementById("hud-root");
   private lastHideCrosshair = false;
   private disposed = false;
+  private assetsReady = false;
+  public readonly ready: Promise<void>;
 
   constructor(canvasId: string) {
     this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
@@ -82,115 +87,137 @@ export class Game {
     // (browser zoom / moving between monitors), bypassing the quality cap.
     this.engine = new Engine(this.canvas, false, { preserveDrawingBuffer: false, stencil: false });
     this.engine.renderEvenInBackground = false;
-    this.scene = new Scene(this.engine);
+    let soldierReady: Promise<void> | undefined;
+    try {
+      this.scene = new Scene(this.engine);
 
-    // Gritty industrial fog/clear color
-    this.scene.clearColor = new Color4(0.08, 0.09, 0.11, 1.0);
+      // Gritty industrial fog/clear color
+      this.scene.clearColor = new Color4(0.08, 0.09, 0.11, 1.0);
 
-    // FPS input is read from raw DOM events; without this Babylon raycasts
-    // the whole scene on every pointermove (hundreds/sec on fast mice) just
-    // to track the mesh under the cursor
-    this.scene.skipPointerMovePicking = true;
+      // FPS input is read from raw DOM events; without this Babylon raycasts
+      // the whole scene on every pointermove (hundreds/sec on fast mice) just
+      // to track the mesh under the cursor
+      this.scene.skipPointerMovePicking = true;
 
-    // The shared rigged-soldier asset loads in the background; soldier
-    // bodies are built headless and grow their skin when this lands
-    preloadSoldierModel(this.scene);
+      // The shared rigged-soldier asset loads in the background; soldier
+      // bodies are built headless and grow their skin when this lands
+      soldierReady = preloadSoldierModel(this.scene);
 
-    // 2. Initialize Subsystems
-    this.time = new Time();
-    this.input = new Input(this.canvas);
-    this.materials = new WorldMaterials(this.scene);
+      // 2. Initialize Subsystems
+      this.time = new Time();
+      this.input = new Input(this.canvas);
+      this.materials = new WorldMaterials(this.scene);
 
-    this.cameraRig = new CameraRig(this.scene);
-    this.player = new PlayerController(this.input, this.cameraRig);
-    this.weaponManager = new WeaponManager();
-    this.map = new ShipBoxMap(this.scene, this.materials);
+      this.cameraRig = new CameraRig(this.scene);
+      this.player = new PlayerController(this.input, this.cameraRig);
+      this.weaponManager = new WeaponManager();
+      this.map = new ShipBoxMap(this.scene, this.materials);
 
-    this.viewModelRig = new ViewModelRig(this.scene, this.cameraRig);
-    this.scopeOverlay = new ScopeOverlay();
-    this.effects = new Effects(this.scene);
-    // After the map: the bots grow their nav graph from its collision boxes.
-    // Before the material freeze below: their materials are final too.
-    this.botManager = new BotManager(this.scene, this.player, this.effects);
-    // Respawns land far from (and hidden from) living enemies
-    this.player.spawnPicker = (spawns) => this.botManager.pickPlayerSpawn(spawns);
-    this.hud = new Hud(this.canvas);
-    this.minimap = new Minimap(this.map);
-    this.matchUI = new MatchUI(this.effects, () => this.weaponManager.getActiveWeapon().id, {
-      onStart: () => this.startMatch(),
-      onResume: () => this.input.requestPointerLock(),
-      onEndMatch: () => this.endMatch(),
-      onPlayAgain: () => this.restartMatch(),
-      onDifficultyChange: (level) => {
-        this.botManager.setDifficultyLevel(level);
+      this.viewModelRig = new ViewModelRig(this.scene, this.cameraRig);
+      this.scopeOverlay = new ScopeOverlay();
+      this.effects = new Effects(this.scene);
+      // After the map: the bots grow their nav graph from its collision boxes.
+      // Before the material freeze below: their materials are final too.
+      this.botManager = new BotManager(this.scene, this.player, this.effects);
+      // Respawns land far from (and hidden from) living enemies
+      this.player.spawnPicker = (spawns) => this.botManager.pickPlayerSpawn(spawns);
+      this.hud = new Hud(this.canvas);
+      this.minimap = new Minimap(this.map);
+      this.matchUI = new MatchUI(this.effects, () => this.weaponManager.getActiveWeapon().id, {
+        onStart: () => this.startMatch(),
+        onResume: () => this.input.requestPointerLock(),
+        onEndMatch: () => this.endMatch(),
+        onPlayAgain: () => this.restartMatch(),
+        onDifficultyChange: (level) => {
+          this.botManager.setDifficultyLevel(level);
+          this.startLoop();
+        },
+        onToggleTrashTalk: (muted) => this.rivalVoice.setMuted(muted),
+        onGraphicsChange: (quality) => this.postfx.setQuality(quality),
+      });
+      this.rivalVoice = new RivalVoice();
+      // Both build meshes/materials, so they sit before the freeze below: the
+      // death-cam corpse actor, and the killstreak hardware (laptop viewmodel,
+      // Apache airframe, the strike jets)
+      this.deathCam = new DeathCam(this.scene, (scale) => {
+        this.time.scale = scale;
+      });
+      this.killstreaks = new Killstreaks(
+        this.scene,
+        this.cameraRig.camera,
+        this.input,
+        this.player,
+        this.botManager,
+        this.effects,
+        this.cameraRig
+      );
+
+      // Pause rides the pointer lock: P (or Escape) releases the lock, and ANY
+      // unlock while playing opens the menu — there is no unpaused-but-unlocked
+      // state to get stranded in. Re-locking from the Resume button unpauses.
+      document.addEventListener("pointerlockchange", this.onPointerLockChange);
+
+      // Post-processing: anti-aliasing, filmic tone mapping, sharpening,
+      // bloom, vignette. This is what lifts the flat-shaded look into
+      // something photographic.
+      this.postfx = new PostProcessing(this.engine, this.scene, this.cameraRig.camera);
+      this.postfx.setOnQualityChange((quality, auto) => {
+        this.matchUI.renderGraphics(quality);
+        this.map.setGraphicsQuality(quality);
         this.startLoop();
-      },
-      onToggleTrashTalk: (muted) => this.rivalVoice.setMuted(muted),
-      onGraphicsChange: (quality) => this.postfx.setQuality(quality),
-    });
-    this.rivalVoice = new RivalVoice();
-    // Both build meshes/materials, so they sit before the freeze below: the
-    // death-cam corpse actor, and the killstreak hardware (laptop viewmodel,
-    // Apache airframe, the strike jets)
-    this.deathCam = new DeathCam(this.scene, (scale) => {
-      this.time.scale = scale;
-    });
-    this.killstreaks = new Killstreaks(
-      this.scene,
-      this.cameraRig.camera,
-      this.input,
-      this.player,
-      this.botManager,
-      this.effects,
-      this.cameraRig
-    );
+        if (auto)
+          this.matchUI.toast(`FRAME RATE LOW — GRAPHICS SET TO ${quality === "performance" ? "FAST" : quality.toUpperCase()}`);
+      });
+      this.map.setGraphicsQuality(this.postfx.currentQuality);
 
-    // Pause rides the pointer lock: P (or Escape) releases the lock, and ANY
-    // unlock while playing opens the menu — there is no unpaused-but-unlocked
-    // state to get stranded in. Re-locking from the Resume button unpauses.
-    document.addEventListener("pointerlockchange", this.onPointerLockChange);
+      // Every material in the scene is now final: textures may still repaint
+      // (target boards) and light uniforms still update (muzzle flash), but no
+      // material ever gains/loses a texture slot or light. Freezing skips the
+      // per-frame shader-define re-evaluation for every mesh.
+      for (const material of this.scene.materials) {
+        material.freeze();
+      }
 
-    // Post-processing: anti-aliasing, filmic tone mapping, sharpening,
-    // bloom, vignette. This is what lifts the flat-shaded look into
-    // something photographic.
-    this.postfx = new PostProcessing(this.engine, this.scene, this.cameraRig.camera);
-    this.postfx.setOnQualityChange((quality, auto) => {
-      this.matchUI.renderGraphics(quality);
-      this.map.setGraphicsQuality(quality);
+      this.setSimulationPaused(true);
+      this.viewModelRig.setHidden(true);
+      this.hud.hidePrompt();
+      this.matchUI.showStart(this.botManager.getDifficultyLevel());
+
+      // 3. Start Main Loop
+      // Assets can finish loading after an idle frame has already been drawn.
+      this.scene.onDataLoadedObservable.add(() => this.startLoop());
+      whenSoldierModelReady(this.scene, () => this.startLoop());
       this.startLoop();
-      if (auto)
-        this.matchUI.toast(`FRAME RATE LOW — GRAPHICS SET TO ${quality === "performance" ? "FAST" : quality.toUpperCase()}`);
-    });
-    this.map.setGraphicsQuality(this.postfx.currentQuality);
 
-    // Every material in the scene is now final: textures may still repaint
-    // (target boards) and light uniforms still update (muzzle flash), but no
-    // material ever gains/loses a texture slot or light. Freezing skips the
-    // per-frame shader-define re-evaluation for every mesh.
-    for (const material of this.scene.materials) {
-      material.freeze();
+      this.ready = soldierReady.then(async () => {
+        if (this.disposed) return;
+        await this.scene.whenReadyAsync();
+        if (!this.disposed) this.assetsReady = true;
+      });
+
+      // 4. Handle Window Resize
+      window.addEventListener("resize", this.onResize);
+      window.addEventListener("blur", this.onBlur);
+      window.addEventListener("focus", this.onFocus);
+      document.addEventListener("visibilitychange", this.onVisibilityChange);
+    } catch (error) {
+      this.dispose();
+      // No Game instance is returned to await this load after a constructor
+      // failure. Disposal may abort it and reject the pending request.
+      void soldierReady?.catch(() => {});
+      throw error;
     }
-
-    this.setSimulationPaused(true);
-    this.viewModelRig.setHidden(true);
-    this.hud.hidePrompt();
-    this.matchUI.showStart(this.botManager.getDifficultyLevel());
-
-    // 3. Start Main Loop
-    // Assets can finish loading after an idle frame has already been drawn.
-    this.scene.onDataLoadedObservable.add(() => this.startLoop());
-    whenSoldierModelReady(this.scene, () => this.startLoop());
-    this.startLoop();
-
-    // 4. Handle Window Resize
-    window.addEventListener("resize", this.onResize);
-    window.addEventListener("blur", this.onBlur);
-    document.addEventListener("visibilitychange", this.onVisibilityChange);
   }
 
   private onPointerLockChange = (): void => {
     const locked = document.pointerLockElement === this.canvas;
     if (locked) {
+      // A pending capture can finish after the window has lost focus.
+      if (document.hidden || !document.hasFocus()) {
+        this.pauseMatch();
+        document.exitPointerLock();
+        return;
+      }
       this.everLocked = true;
       if (this.matchState === "paused") this.resumeMatch();
     } else if (this.matchState === "playing" && this.everLocked) {
@@ -206,7 +233,12 @@ export class Game {
   private onBlur = (): void => {
     this.pauseMatch();
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+    // Babylon skips frame callbacks while unfocused, so the idle callback
+    // cannot stop itself until focus returns.
+    this.engine.stopRenderLoop();
   };
+
+  private onFocus = (): void => this.startLoop();
 
   private onVisibilityChange = (): void => {
     if (document.hidden) {
@@ -225,18 +257,20 @@ export class Game {
     document.removeEventListener("pointerlockchange", this.onPointerLockChange);
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("blur", this.onBlur);
+    window.removeEventListener("focus", this.onFocus);
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
-    this.killstreaks.dispose();
-    this.rivalVoice.dispose();
-    this.matchUI.dispose();
-    this.hud.dispose();
-    this.effects.dispose();
-    this.postfx.dispose();
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+    this.killstreaks?.dispose();
+    this.rivalVoice?.dispose();
+    this.matchUI?.dispose();
+    this.hud?.dispose();
+    this.effects?.dispose();
+    this.postfx?.dispose();
     resetDynamicShadowCasters();
     resetEnvironmentCache();
     MatchEvents.clear();
-    this.input.dispose();
-    this.scene.dispose();
+    this.input?.dispose();
+    this.scene?.dispose();
     this.engine.dispose();
   }
 
@@ -271,14 +305,15 @@ export class Game {
   }
 
   // Deterministic stepping for tooling: advance the simulation N frames of
-  // exactly `dt` seconds each, rendering every one. Dev-only (see main.ts);
+  // exactly `dt` seconds each, rendering every one by default. Dev-only (see main.ts);
   // lets the death choreography, reload animations and bot behaviour be
-  // inspected frame by frame from the console without a live mouse.
-  public stepFrames(frames: number, dt: number): void {
+  // inspected frame by frame from the console without a live mouse. Tests can
+  // skip drawing intermediate frames while advancing the same update loop.
+  public stepFrames(frames: number, dt: number, render = true): void {
     for (let i = 0; i < frames; i++) {
       this.time.deltaTime = dt;
       this.engine.beginFrame();
-      this.frame();
+      this.frame(render);
       this.engine.endFrame();
     }
   }
@@ -301,7 +336,7 @@ export class Game {
   }
 
   // One simulation + render frame. Time.deltaTime has already been set.
-  private frame(): void {
+  private frame(render = true): void {
     if (this.matchState === "playing") {
       const dt = this.time.deltaTime;
 
@@ -389,7 +424,7 @@ export class Game {
     }
 
     // Step 6: Render the current scene (idle calls redraw menu backgrounds).
-    this.scene.render();
+    if (render) this.scene.render();
 
     // Step 6.5: Once a second while playing, let the image pipeline judge
     // whether the chosen quality tier is holding a playable frame rate
@@ -422,7 +457,7 @@ export class Game {
   // ---------------------------------------------------------- match flow
 
   private startMatch(): void {
-    if (this.matchState !== "start") return;
+    if (this.matchState !== "start" || !this.assetsReady) return;
     this.player.resetForMatch();
     this.botManager.resetMatch(this.player);
     this.weaponManager.resetLoadout();

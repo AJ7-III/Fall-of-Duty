@@ -1,49 +1,44 @@
-import { LoadAssetContainerAsync } from "@babylonjs/core";
-import "@babylonjs/loaders/glTF/2.0";
+import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
+import "@babylonjs/loaders/glTF/2.0/glTFLoader";
 import type { AssetContainer, Scene } from "@babylonjs/core";
 import { assetUrl } from "../assets/paths";
 
-// One shared rigged-soldier asset (Mixamo "Vanguard" body, 49-joint rig,
-// Idle/Walk/Run clips baked in) loaded once per scene; every SoldierBody
-// clones its skeleton out of this container. The load is async — bodies are
-// built headless (hitboxes, rifle, proxies) and grow their skin the moment
-// the container lands, so Game's synchronous constructor chain never waits.
-
 interface Entry {
-  scene: Scene;
   container: AssetContainer | null;
-  waiters: Array<(c: AssetContainer) => void>;
+  waiters: Array<(container: AssetContainer) => void>;
+  ready: Promise<void>;
 }
 
-let entry: Entry | null = null;
+// Weak scene keys prevent an abandoned game from retaining its model. Preview
+// scenes can coexist with the main scene without replacing its pending load.
+const entries = new WeakMap<Scene, Entry>();
 
-export function preloadSoldierModel(scene: Scene): void {
-  const e: Entry = { scene, container: null, waiters: [] };
-  entry = e;
+export function preloadSoldierModel(scene: Scene): Promise<void> {
+  const existing = entries.get(scene);
+  if (existing) return existing.ready;
+  const entry: Entry = { container: null, waiters: [], ready: Promise.resolve() };
+  entries.set(scene, entry);
   scene.onDisposeObservable.addOnce(() => {
-    if (entry === e) entry = null;
-    e.waiters.length = 0;
-    e.container?.dispose();
-    e.container = null;
+    entries.delete(scene);
+    entry.waiters.length = 0;
+    entry.container?.dispose();
+    entry.container = null;
   });
-  LoadAssetContainerAsync(assetUrl("models/soldier.glb"), scene)
-    .then((container) => {
-      if (entry !== e || scene.isDisposed) {
-        container.dispose();
-        return;
-      }
-      e.container = container;
-      for (const w of e.waiters) w(container);
-      e.waiters.length = 0;
-    })
-    .catch((err) => {
-      // headless soldiers still play (hitboxes + rifles work) — log loudly
-      console.error("Soldier model failed to load:", err);
-    });
+  entry.ready = LoadAssetContainerAsync(assetUrl("models/soldier.glb"), scene).then((container) => {
+    if (scene.isDisposed) {
+      container.dispose();
+      return;
+    }
+    entry.container = container;
+    for (const waiter of entry.waiters) waiter(container);
+    entry.waiters.length = 0;
+  });
+  return entry.ready;
 }
 
-export function whenSoldierModelReady(scene: Scene, cb: (c: AssetContainer) => void): void {
-  if (!entry || entry.scene !== scene) return; // preload never kicked off
-  if (entry.container) cb(entry.container);
-  else entry.waiters.push(cb);
+export function whenSoldierModelReady(scene: Scene, callback: (container: AssetContainer) => void): void {
+  const entry = entries.get(scene);
+  if (!entry || scene.isDisposed) return;
+  if (entry.container) callback(entry.container);
+  else entry.waiters.push(callback);
 }

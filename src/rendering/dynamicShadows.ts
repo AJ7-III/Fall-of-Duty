@@ -1,4 +1,5 @@
-import { Observable } from "@babylonjs/core";
+import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
+import { Observable } from "@babylonjs/core/Misc/observable";
 import type { AbstractMesh } from "@babylonjs/core";
 
 // Registry of the meshes that move and should throw real shadows when the

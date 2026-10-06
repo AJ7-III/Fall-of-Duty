@@ -1,14 +1,10 @@
-import {
-  Matrix,
-  MeshBuilder,
-  PBRMaterial,
-  Quaternion,
-  StandardMaterial,
-  Color3,
-  DynamicTexture,
-  TransformNode,
-  Vector3,
-} from "@babylonjs/core";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh, AnimationGroup, AssetContainer, Material, Observer, Scene, Mesh } from "@babylonjs/core";
 import { whenSoldierModelReady } from "./SoldierAssets";
 import { terminatorSkin } from "./TerminatorSkin";
@@ -443,8 +439,30 @@ interface Follower {
 interface DeathJoint {
   joint: TransformNode;
   base: Quaternion;
+  rest: Quaternion;
   angles: () => { right: number; fwd: number };
 }
+
+// Conservative body/boot thickness around the joints. DeathPerformance uses
+// these actual skeleton points to prevent floating or sinking through floor.
+const DEATH_CONTACTS: ReadonlyArray<[string, number]> = [
+  ["Hips", 0.15],
+  ["Spine1", 0.17],
+  ["Spine2", 0.17],
+  ["Head", 0.13],
+  ["LeftArm", 0.09],
+  ["RightArm", 0.09],
+  ["LeftForeArm", 0.065],
+  ["RightForeArm", 0.065],
+  ["LeftHand", 0.05],
+  ["RightHand", 0.05],
+  ["LeftLeg", 0.1],
+  ["RightLeg", 0.1],
+  ["LeftFoot", 0.075],
+  ["RightFoot", 0.075],
+  ["LeftToeBase", 0.06],
+  ["RightToeBase", 0.06],
+];
 
 // Two-bone analytic IK arm gripping the rifle
 interface ArmIK {
@@ -464,6 +482,7 @@ const UF_D = new Vector3();
 const UF_R = new Vector3();
 const UF_Q = new Quaternion();
 const UF_INVROOT = new Quaternion();
+const DEATH_Q = new Quaternion();
 
 export class SoldierBodyController {
   private scene: Scene;
@@ -490,8 +509,11 @@ export class SoldierBodyController {
   private mountF: Follower | null = null;
   private arms: ArmIK[] = [];
   private deathJoints: DeathJoint[] = [];
-  private gunArmX0 = 0; // gunArm Euler at the moment of death — arm offsets are deltas
-  private gunArmZ0 = 0;
+  private deathRest: Record<string, Quaternion> = {};
+  private deathBlend = 0;
+  private restLegs = { hip: 0.95, thigh: 0.45, shin: 0.42 };
+  private restHipPosition = new Vector3();
+  private deathHipPosition = new Vector3();
   private mirrorSign = 1; // axis-angle handedness flip under the glTF mirror chain
 
   private readyCbs: Array<() => void> = [];
@@ -570,12 +592,20 @@ export class SoldierBodyController {
     // same (possibly mirrored) glTF root chain.
     this.mirrorSign = j("Hips").getWorldMatrix().determinant() < 0 ? -1 : 1;
 
+    this.captureDeathRestPose();
+
     this.convertMaterials(inst);
     this.buildFollowers(j);
     this.buildArms(j);
     this.setupAnimations(inst.animationGroups);
 
     this.loaded = true;
+    if (this.dying) {
+      this.idleG?.stop();
+      this.walkG?.stop();
+      this.runG?.stop();
+      this.captureDeathPose();
+    }
     for (const cb of this.readyCbs) cb();
     this.readyCbs.length = 0;
   }
@@ -756,6 +786,7 @@ export class SoldierBodyController {
   public beginDeath(): void {
     if (this.dying) return;
     this.dying = true;
+    this.deathBlend = 0;
     if (!this.loaded) return;
     this.idleG?.stop();
     this.walkG?.stop();
@@ -764,7 +795,14 @@ export class SoldierBodyController {
   }
 
   public endDeath(): void {
+    // Restore the captured living pose before clips restart. The hidden
+    // player corpse can die again before an animation frame has evaluated.
+    for (const dj of this.deathJoints) {
+      dj.joint.rotationQuaternion?.copyFrom(dj.base);
+    }
+    if (this.dying && this.loaded) this.joints.Hips.position.copyFrom(this.deathHipPosition);
     this.dying = false;
+    this.deathBlend = 0;
     this.deathJoints.length = 0;
     if (!this.loaded) return;
     this.startGroups();
@@ -774,50 +812,114 @@ export class SoldierBodyController {
   // height above the root and the thigh/shin lengths, measured from the
   // skeleton (rest-pose defaults until it lands)
   public legMetrics(): { hip: number; thigh: number; shin: number } {
+    return this.restLegs;
+  }
+
+  // Capture once at bind time, before locomotion clips bend the knees or
+  // arm IK folds the elbows. Arms use a lowered reference rather than TPose.
+  private captureDeathRestPose(): void {
     const J = this.joints;
-    if (!this.loaded || !J.Hips || !J.LeftUpLeg || !J.LeftLeg || !J.LeftFoot) {
-      return { hip: 0.95, thigh: 0.45, shin: 0.42 };
+    for (const key of [
+      "Hips",
+      "Spine1",
+      "Spine2",
+      "Neck",
+      "Head",
+      "LeftArm",
+      "RightArm",
+      "LeftForeArm",
+      "RightForeArm",
+      "LeftUpLeg",
+      "RightUpLeg",
+      "LeftLeg",
+      "RightLeg",
+      "LeftFoot",
+      "RightFoot",
+      "LeftToeBase",
+      "RightToeBase",
+    ]) {
+      const joint = J[key];
+      if (!joint) continue;
+      const base = joint.rotationQuaternion?.clone() ?? Quaternion.FromEulerVector(joint.rotation);
+      if (key === "LeftArm" || key === "RightArm") {
+        this.composeOffset(joint, base, 0, key === "LeftArm" ? Math.PI / 2 : -Math.PI / 2);
+        this.deathRest[key] = joint.rotationQuaternion!.clone();
+        joint.rotationQuaternion!.copyFrom(base);
+        joint.computeWorldMatrix(true);
+      } else this.deathRest[key] = base;
     }
-    const rootY = this.r.root.getAbsolutePosition().y;
-    return {
-      hip: J.Hips.getAbsolutePosition().y - rootY,
+    this.restHipPosition.copyFrom(J.Hips.position);
+    this.r.root.computeWorldMatrix(true).invertToRef(TMP_M);
+    const localHip = Vector3.TransformCoordinates(J.Hips.getAbsolutePosition(), TMP_M);
+    this.restLegs = {
+      hip: localHip.y,
       thigh: Vector3.Distance(J.LeftUpLeg.getAbsolutePosition(), J.LeftLeg.getAbsolutePosition()),
       shin: Vector3.Distance(J.LeftLeg.getAbsolutePosition(), J.LeftFoot.getAbsolutePosition()),
     };
   }
 
+  public setDeathBlend(blend: number): void {
+    this.deathBlend = Math.max(0, Math.min(1, blend));
+  }
+
+  public placeDeathOnGround(groundY: number, settle: number): void {
+    if (!this.loaded || !this.dying) return;
+    this.r.root.computeWorldMatrix(true);
+    this.applyDeathPose();
+    let lowest = Infinity;
+    for (const [key, radius] of DEATH_CONTACTS) {
+      const joint = this.joints[key];
+      if (!joint) continue;
+      joint.computeWorldMatrix(true);
+      lowest = Math.min(lowest, joint.getAbsolutePosition().y - radius);
+    }
+    if (Number.isFinite(lowest)) {
+      const gap = groundY - lowest;
+      this.r.root.position.y += gap > 0 ? gap : gap * settle;
+      this.r.root.computeWorldMatrix(true);
+      for (const [key] of DEATH_CONTACTS) this.joints[key]?.computeWorldMatrix(true);
+    }
+    // Refresh the weapon mount at the sampled release time, even if no
+    // render occurred between cue boundaries in a slow frame.
+    if (this.mountF) this.updateFollower(this.mountF);
+  }
+
   private captureDeathPose(): void {
     const r = this.r;
     const J = this.joints;
-    this.gunArmX0 = r.gunArm.rotation.x;
-    this.gunArmZ0 = r.gunArm.rotation.z;
+    this.deathHipPosition.copyFrom(J.Hips.position);
     this.deathJoints.length = 0;
     const add = (key: string, angles: () => { right: number; fwd: number }): void => {
       const joint = J[key];
       if (!joint) return;
       const base = joint.rotationQuaternion ? joint.rotationQuaternion.clone() : Quaternion.FromEulerVector(joint.rotation);
-      this.deathJoints.push({ joint, base, angles });
+      this.deathJoints.push({ joint, base, rest: this.deathRest[key] ?? base, angles });
     };
     // ordered parent-first so each offset composes on settled ancestors
+    add("Hips", () => ({ right: 0, fwd: 0 }));
     add("Spine1", () => ({ right: r.torso.rotation.x * 0.65, fwd: 0 }));
     add("Spine2", () => ({ right: r.torso.rotation.x * 0.55, fwd: 0 }));
     add("Neck", () => ({ right: r.head.rotation.x * 0.45, fwd: r.head.rotation.z * 0.4 }));
     add("Head", () => ({ right: r.head.rotation.x * 0.65, fwd: r.head.rotation.z * 0.6 }));
     // arms: the shared gunArm swing plus each arm's own death offsets
     add("LeftArm", () => ({
-      right: r.gunArm.rotation.x - this.gunArmX0 + r.armL.rotation.x,
-      fwd: r.gunArm.rotation.z - this.gunArmZ0 + r.armL.rotation.z,
+      right: r.gunArm.rotation.x + r.armL.rotation.x,
+      fwd: r.gunArm.rotation.z + r.armL.rotation.z,
     }));
     add("RightArm", () => ({
-      right: r.gunArm.rotation.x - this.gunArmX0 + r.armR.rotation.x,
-      fwd: r.gunArm.rotation.z - this.gunArmZ0 - r.armR.rotation.z,
+      right: r.gunArm.rotation.x + r.armR.rotation.x,
+      fwd: r.gunArm.rotation.z - r.armR.rotation.z,
     }));
     add("LeftForeArm", () => ({ right: r.foreL.rotation.x, fwd: 0 }));
     add("RightForeArm", () => ({ right: r.foreR.rotation.x, fwd: 0 }));
-    add("LeftUpLeg", () => ({ right: r.hipL.rotation.x, fwd: 0 }));
-    add("RightUpLeg", () => ({ right: r.hipR.rotation.x, fwd: 0 }));
+    add("LeftUpLeg", () => ({ right: r.hipL.rotation.x, fwd: r.hipL.rotation.z }));
+    add("RightUpLeg", () => ({ right: r.hipR.rotation.x, fwd: r.hipR.rotation.z }));
     add("LeftLeg", () => ({ right: r.kneeL.rotation.x, fwd: 0 }));
     add("RightLeg", () => ({ right: r.kneeR.rotation.x, fwd: 0 }));
+    add("LeftFoot", () => ({ right: -r.hipL.rotation.x - r.kneeL.rotation.x, fwd: 0 }));
+    add("RightFoot", () => ({ right: -r.hipR.rotation.x - r.kneeR.rotation.x, fwd: 0 }));
+    add("LeftToeBase", () => ({ right: 0, fwd: 0 }));
+    add("RightToeBase", () => ({ right: 0, fwd: 0 }));
   }
 
   // -------------------------------------------------------------- pose layer
@@ -881,9 +983,11 @@ export class SoldierBodyController {
   }
 
   private applyDeathPose(): void {
+    Vector3.LerpToRef(this.deathHipPosition, this.restHipPosition, this.deathBlend, this.joints.Hips.position);
     for (const dj of this.deathJoints) {
       const a = dj.angles();
-      this.composeOffset(dj.joint, dj.base, a.right, a.fwd);
+      Quaternion.SlerpToRef(dj.base, dj.rest, this.deathBlend, DEATH_Q);
+      this.composeOffset(dj.joint, DEATH_Q, a.right * this.deathBlend, a.fwd * this.deathBlend);
     }
   }
 
