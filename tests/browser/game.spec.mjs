@@ -1,7 +1,7 @@
-import { test, expect } from "./fixtures.mjs";
+import { test, expect, waitForStartup } from "./fixtures.mjs";
 
 const ready = async (page) => {
-  await expect(page.locator("#btn-start")).toBeEnabled({ timeout: 45000 });
+  await waitForStartup(page);
   await page.waitForFunction(() => Boolean(window.__game && window.fod));
 };
 const start = async (page) => {

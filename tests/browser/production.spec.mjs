@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { test, expect } from "./fixtures.mjs";
+import { test, expect, waitForStartup } from "./fixtures.mjs";
 
 test("production game works under the GitHub Pages base path", async ({ page }, testInfo) => {
   const errors = [];
@@ -7,7 +7,7 @@ test("production game works under the GitHub Pages base path", async ({ page }, 
   page.on("requestfailed", (request) => errors.push(`${request.url()}: ${request.failure()?.errorText}`));
   await page.addInitScript(() => localStorage.setItem("fallOfDuty.graphics", "performance"));
   await page.goto("http://127.0.0.1:4173/Fall-of-Duty/");
-  await expect(page.locator("#btn-start")).toBeEnabled({ timeout: 45000 });
+  await waitForStartup(page);
   expect(await page.evaluate(() => ({ game: typeof window.__game, tools: typeof window.fod }))).toEqual({
     game: "undefined",
     tools: "undefined",

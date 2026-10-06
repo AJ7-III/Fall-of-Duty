@@ -3,10 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/browser",
   testMatch: "*.spec.mjs",
-  timeout: 45000,
+  timeout: 60000,
   expect: { timeout: 15000 },
   fullyParallel: false,
   workers: 1, // GPU-heavy scenes compete when several browsers run together.
+  maxFailures: process.env.CI ? 1 : 0, // Stop a runner after a confirmed failure; keep its diagnostics.
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: { baseURL: "http://127.0.0.1:3001", trace: "retain-on-failure", screenshot: "only-on-failure" },

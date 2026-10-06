@@ -17,7 +17,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  browser:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: npm run test:browser -- --project=${{ matrix.browser }}
+        env:
+          FOD_REAL_POINTER_LOCK: "1"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: browser-failure-${{ matrix.browser }}
+          path: test-results/
+          retention-days: 7
+
   build:
+    needs: browser
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,13 +54,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npx playwright install --with-deps chromium firefox
-
       - run: npm run check
-
-      - run: npm run test:browser
-        env:
-          FOD_REAL_POINTER_LOCK: "1"
 
       - run: npm run build
         env:

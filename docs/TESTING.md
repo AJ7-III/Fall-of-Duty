@@ -21,7 +21,9 @@ Death regressions check timing, reset and rifle motion across frame sizes.
 ## Browser coverage
 
 Playwright runs the same suite in Chromium and Firefox with one worker to avoid
-competing GPU-heavy scenes. Tests cover:
+competing GPU-heavy scenes. GitHub runs each browser on its own runner in
+parallel. Each runner stops after a confirmed failure and uploads its traces,
+screenshots and startup diagnostics as a seven-day artifact. Tests cover:
 
 - Successful startup, slow/failed model downloads, stalled-download timeout,
   failed game-bundle imports and successful retry.
