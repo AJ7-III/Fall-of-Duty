@@ -39,7 +39,7 @@ const LEFT_GRIP: HandPose = {
   wrist: [-0.117, -0.007, 0.089],
   knuckles: [0.9, 0.35, 0.25],
   palm: [-0.35, 0.92, 0.1],
-  curl: { thumb: 0.35, index: 0.85, middle: 0.9, ring: 0.95, pinky: 1.0 },
+  curl: { thumb: [0.1, -0.15, -0.2], index: 0.85, middle: 0.9, ring: 0.95, pinky: 1.0 },
 };
 
 export function buildSniperViewModel(scene: Scene): WeaponViewModel {
