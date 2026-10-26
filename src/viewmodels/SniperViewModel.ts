@@ -34,12 +34,13 @@ const RIGHT_BOLT: HandPose = {
   curl: { thumb: 0.6, index: 0.8, middle: 0.9, ring: 0.9, pinky: 0.9 },
 };
 
-// Support hand cupping the fore-end from below, fingers over the far side
+// Cradle the narrow fore-end with open fingers along its far side. A fist
+// closes through the stock; the shorter pinky needs still less flexion.
 const LEFT_GRIP: HandPose = {
-  wrist: [-0.117, -0.007, 0.089],
+  wrist: [-0.092, -0.037, 0.089],
   knuckles: [0.9, 0.35, 0.25],
   palm: [-0.35, 0.92, 0.1],
-  curl: { thumb: [0.1, -0.15, -0.2], index: 0.85, middle: 0.9, ring: 0.95, pinky: 1.0 },
+  curl: { thumb: [0, 0.5, -0.2], index: 0.55, middle: 0.55, ring: 0.55, pinky: 0.38 },
 };
 
 export function buildSniperViewModel(scene: Scene): WeaponViewModel {

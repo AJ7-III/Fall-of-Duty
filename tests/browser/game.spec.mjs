@@ -513,6 +513,125 @@ test("a stalled download times out and can be retried", async ({ page }) => {
   await ready(page);
 });
 
+test("sniper support fingers stay outside the fore-end during aiming and bolt work", async ({ page }) => {
+  await start(page);
+  const result = await page.evaluate(() => {
+    const g = window.__game;
+    const { Vector3 } = window.fod.lib;
+    g.engine.stopRenderLoop();
+    g.player.invulnUntil = Infinity;
+    const updateBots = g.botManager.update;
+    g.botManager.update = () => {};
+    window.fod.teleport(0, 0, 0);
+    window.fod.weapon("m40a3");
+    const vm = g.viewModelRig.models.m40a3;
+    const arms = g.viewModelRig.arms;
+    const entries = arms.root
+      .getChildMeshes()
+      .filter((mesh) => mesh.skeleton)
+      .map((mesh) => {
+        const weights = mesh.getVerticesData("matricesWeights");
+        const boneIndices = mesh.getVerticesData("matricesIndices");
+        const indices = mesh.getIndices();
+        const fingers = new Set();
+        for (const vertex of new Set(indices)) {
+          let weight = 0;
+          for (let k = 0; k < 4; k++) {
+            if (/LeftHand(Thumb|Index|Middle|Ring|Pinky)/.test(mesh.skeleton.bones[boneIndices[vertex * 4 + k]]?.name))
+              weight += weights[vertex * 4 + k];
+          }
+          if (weight > 0.25) fingers.add(vertex);
+        }
+        const faces = [];
+        for (let i = 0; i < indices.length; i += 3) {
+          const face = [indices[i], indices[i + 1], indices[i + 2]];
+          if (face.filter((vertex) => fingers.has(vertex)).length >= 2) faces.push(face);
+        }
+        return { mesh, faces };
+      });
+    // Independent clearance envelope for the stock's oval body, tapered
+    // fore-end, rounded nose and barrel. Allow 0.5 mm for mesh faceting.
+    const penetration = ({ x, y, z }) => {
+      let depth = -1;
+      const oval = (cy, rx, ry) => Math.min(rx, ry) * (1 - Math.hypot(x / rx, (y - cy) / ry));
+      if (z >= -0.19 && z <= 0.07) depth = Math.max(depth, oval(0.068, 0.0312, 0.039));
+      if (z >= 0.07 && z <= 0.21) {
+        const r = 0.039 - ((z - 0.07) / 0.14) * 0.01;
+        depth = Math.max(depth, oval(0.069, r * 0.8, r));
+      }
+      if (z > 0.186 && z < 0.23)
+        depth = Math.max(depth, 0.02175 * (1 - Math.hypot(x / 0.0232, (y - 0.069) / 0.029, (z - 0.208) / 0.02175)));
+      if (z >= 0.02 && z <= 0.28) {
+        const r = 0.0175 - ((z - 0.02) / 0.26) * 0.0065;
+        depth = Math.max(depth, r - Math.hypot(x, y - 0.115));
+      }
+      return depth;
+    };
+    const phases = new Set();
+    let samples = 0;
+    let maxPenetration = 0;
+    const check = (phase) => {
+      if (!vm.root.isEnabled() || !arms.root.isEnabled()) return;
+      phases.add(phase);
+      const inverse = vm.root.computeWorldMatrix(true).clone().invert();
+      arms.root.getDescendants().forEach((node) => node.computeWorldMatrix(true));
+      for (const { mesh, faces } of entries) {
+        mesh.skeleton.prepare(true);
+        const positions = mesh.getPositionData(true);
+        const transform = mesh.computeWorldMatrix(true).multiply(inverse);
+        const point = (vertex) => Vector3.TransformCoordinates(Vector3.FromArray(positions, vertex * 3), transform);
+        for (const face of faces) {
+          const [a, b, c] = face.map(point);
+          for (const p of [
+            a,
+            b,
+            c,
+            a.add(b).scale(0.5),
+            b.add(c).scale(0.5),
+            c.add(a).scale(0.5),
+            a
+              .add(b)
+              .add(c)
+              .scale(1 / 3),
+          ]) {
+            samples++;
+            const depth = penetration(p);
+            maxPenetration = Math.max(maxPenetration, depth);
+            if (depth > 0.0005) throw Error(`${phase}: support glove penetrates the sniper by ${(depth * 1000).toFixed(2)} mm`);
+          }
+        }
+      }
+    };
+    const advance = (frames, phase) => {
+      for (let i = 0; i < frames; i++) {
+        g.stepFrames(1, 1 / 60, false);
+        if (i % 6 === 0) check(phase);
+      }
+    };
+    try {
+      advance(12, "hip");
+      g.input.mouseButtons.set(2, true);
+      advance(60, "aim");
+      g.input.clearAllInputs();
+      advance(60, "lower");
+      g.input.mouseButtonsPressedThisFrame.add(0);
+      advance(120, "bolt");
+      g.input.keysPressedThisFrame.add("KeyR");
+      advance(240, "reload");
+      g.input.keys.set("KeyW", true);
+      g.input.keys.set("ShiftLeft", true);
+      advance(60, "sprint");
+      return { phases: [...phases], samples, maxPenetration };
+    } finally {
+      g.input.clearAllInputs();
+      g.botManager.update = updateBots;
+    }
+  });
+  expect(result.phases).toEqual(["hip", "aim", "lower", "bolt", "reload", "sprint"]);
+  expect(result.samples).toBeGreaterThan(10000);
+  expect(result.maxPenetration).toBeLessThanOrEqual(0.0005);
+});
+
 test("all weapons aim, fire and reload without invalid ammo", async ({ page }) => {
   await start(page);
   const result = await page.evaluate(() => {
