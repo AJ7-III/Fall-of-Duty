@@ -12,6 +12,7 @@ Object.defineProperty(globalThis, "localStorage", {
 // adding another compiler or a browser dependency to the test suite.
 const server = await createServer({
   configFile: false,
+  cacheDir: "node_modules/.vite-tests/regressions",
   server: { middlewareMode: true, hmr: false },
   appType: "custom",
   logLevel: "silent",

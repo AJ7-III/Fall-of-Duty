@@ -8,6 +8,7 @@ import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 const server = await createServer({
   configFile: false,
+  cacheDir: "node_modules/.vite-tests/death",
   server: { middlewareMode: true, hmr: false },
   appType: "custom",
   logLevel: "silent",

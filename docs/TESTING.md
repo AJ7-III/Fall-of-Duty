@@ -34,6 +34,10 @@ screenshots and startup diagnostics as a seven-day artifact. Tests cover:
   the floor across all three fall variants.
 - UAV, Apache deployment, airstrike targeting and returning camera control.
 - All three weapons' aiming, firing and manual/empty-magazine reloads.
+- Sedan glazing follows the sloping pillars; all vehicle windows retain their
+  crack and shatter timing, and the truck steering wheel clears the dashboard.
+- Vehicle details remain merged and reuse their textures in High, Balanced and
+  Fast, within 50,000 vertices, 24 static meshes and 10 MiB of surface textures.
 - Difficulty changes and Terminator skin switching, graphics switching,
   Fast's pixel/FPS limits, idle rendering and focus loss.
 - Graffiti uses four atlas strips on one merged wall mesh, within its texture

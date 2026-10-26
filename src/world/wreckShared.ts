@@ -1,11 +1,13 @@
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { flatMat } from "../rendering/materials/canvas";
-import type { AbstractMesh, Material, PickingInfo, Scene, Mesh, TransformNode } from "@babylonjs/core";
+import type { AbstractMesh, Material, PickingInfo, Scene, TransformNode } from "@babylonjs/core";
 import type { WorldMaterials } from "./materials/WorldMaterials";
 import type { Effects } from "../rendering/Effects";
 
@@ -112,7 +114,7 @@ export function applyLaminatedGlass(scene: Scene, pane: Mesh, name: string): Dyn
   const tex = new DynamicTexture(`${name}_tex`, { width: 256, height: 128 }, scene, true);
   paintGlassBase(tex);
 
-  pane.material = glassMat(scene, `${name}_mat`, tex, 0.42);
+  pane.material = glassMat(scene, `${name}_mat`, tex, 0.28);
 
   return tex;
 }
@@ -131,7 +133,7 @@ export function addTemperedPane(
   y: number,
   z: number
 ): void {
-  const mat = glassMat(scene, "carSideGlassMat", null, 0.34); // clear enough that the cabin reads through it
+  const mat = glassMat(scene, "carSideGlassMat", null, 0.24);
 
   const pane = MeshBuilder.CreateBox(name, { width: w, height: h, depth: 0.022 }, scene);
   pane.position.set(x, y, z);
@@ -141,16 +143,42 @@ export function addTemperedPane(
   panes.set(pane, { mesh: pane, broken: false, crackTex: null, hits: 0 });
 }
 
+// A shaped side window: vertices follow the pillars and lean inward at the
+// roof. Keep the mesh origin at its centre so glass shards emit at the pane.
+export function addTemperedQuad(
+  scene: Scene,
+  root: TransformNode,
+  instance: unknown,
+  panes: Map<AbstractMesh, GlassPane>,
+  name: string,
+  corners: readonly Vector3[]
+): void {
+  const center = corners.reduce((sum, corner) => sum.addInPlace(corner), new Vector3()).scaleInPlace(0.25);
+  const positions = corners.flatMap((corner) => corner.subtract(center).asArray());
+  const indices = [0, 1, 2, 0, 2, 3];
+  const normals: number[] = [];
+  VertexData.ComputeNormals(positions, indices, normals);
+  const data = new VertexData();
+  Object.assign(data, { positions, indices, normals, uvs: [0, 0, 1, 0, 1, 1, 0, 1] });
+  const pane = new Mesh(name, scene);
+  data.applyToMesh(pane);
+  pane.position.copyFrom(center);
+  pane.parent = root;
+  pane.material = glassMat(scene, "carSideGlassMat", null, 0.24);
+  pane.metadata = { type: "carGlass", instance };
+  panes.set(pane, { mesh: pane, broken: false, crackTex: null, hits: 0 });
+}
+
 function paintGlassBase(tex: DynamicTexture): void {
   const ctx = tex.getContext() as CanvasRenderingContext2D;
   const w = 256,
     h = 128;
-  // dark tinted laminate: the sheen comes from the material's reflection,
+  // Dusty grey laminate: the sheen comes from the material's reflection,
   // not from a pale wash in the paint
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#3a4850");
-  g.addColorStop(0.55, "#2c383f");
-  g.addColorStop(1, "#22292e");
+  g.addColorStop(0, "#6e7a80");
+  g.addColorStop(0.55, "#56636b");
+  g.addColorStop(1, "#3e4a52");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   // rain rivulets

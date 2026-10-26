@@ -70,6 +70,149 @@ test("boots with essential assets, working dev captures and no runtime errors", 
   expect(errors).toEqual([]);
 });
 
+test("vehicle side windows follow the pillars and all glazing still breaks correctly", async ({ page }) => {
+  await page.goto("/");
+  await ready(page);
+  const result = await page.evaluate(async () => {
+    const g = window.__game;
+    g.engine.stopRenderLoop();
+    const { Ray } = await import("/node_modules/@babylonjs/core/Culling/ray.js");
+    const { Vector3 } = window.fod.lib;
+    const scene = g.scene;
+    const root = scene.getTransformNodeByName("carRoot");
+    root.computeWorldMatrix(true);
+    const assert = (value, message) => {
+      if (!value) throw Error(message);
+    };
+    const sidePick = (pane, x, y, side) => {
+      const origin = Vector3.TransformCoordinates(new Vector3(x, y, side * 1.2), root.getWorldMatrix());
+      const direction = Vector3.TransformNormal(new Vector3(0, 0, -side), root.getWorldMatrix()).normalize();
+      return scene.pickWithRay(new Ray(origin, direction, 1), (mesh) => mesh === pane);
+    };
+    for (const side of [-1, 1]) {
+      const front = scene.getMeshByName(`car_glassF${side}`);
+      const rear = scene.getMeshByName(`car_glassR${side}`);
+      assert(sidePick(front, 0.44, 1.0, side)?.hit, "Front glass must reach the lower A-pillar");
+      assert(!sidePick(front, 0.29, 1.33, side)?.hit, "Front glass must stop at the sloping A-pillar");
+      assert(sidePick(rear, -1.5, 1.0, side)?.hit, "Rear glass must reach the lower C-pillar");
+      assert(!sidePick(rear, -1.4, 1.34, side)?.hit, "Rear glass must stop at the sloping C-pillar");
+    }
+    // Inspect the unmerged truck as well: its entire steering rim must
+    // clear the instrument binnacle, including the rim's thickness.
+    const [{ Scene }, { WorldMaterials }, { TruckWreck }] = await Promise.all([
+      import("/node_modules/@babylonjs/core/scene.js"),
+      import("/src/world/materials/WorldMaterials.ts"),
+      import("/src/world/TruckWreck.ts"),
+    ]);
+    const assetScene = new Scene(g.engine);
+    try {
+      new TruckWreck(assetScene, new WorldMaterials(assetScene), Vector3.Zero(), 0, () => {});
+      const wheel = assetScene.getMeshByName("truck_steering_rim");
+      const dash = assetScene.getMeshByName("truck_instruments_binnacle");
+      wheel.computeWorldMatrix(true);
+      dash.computeWorldMatrix(true);
+      assert(
+        wheel.getBoundingInfo().boundingBox.maximumWorld.x + 0.015 < dash.getBoundingInfo().boundingBox.minimumWorld.x,
+        "Truck steering rim must clear the dash by at least 15 mm"
+      );
+    } finally {
+      assetScene.dispose();
+    }
+    let cracks = 0;
+    let breaks = 0;
+    const effects = {
+      playGlassCrackSound() {
+        cracks++;
+      },
+      playGlassBreakSound() {
+        breaks++;
+      },
+    };
+    const panes = scene.meshes.filter((mesh) => mesh.metadata?.type === "carGlass");
+    for (const pane of panes) {
+      pane.computeWorldMatrix(true);
+      const laminated = /windshield|rearGlass/.test(pane.name);
+      const axis = pane.name.startsWith("truck_windshield") ? Vector3.Right() : laminated ? Vector3.Up() : Vector3.Forward();
+      const normal = Vector3.TransformNormal(axis, pane.getWorldMatrix()).normalize();
+      const center = pane.getAbsolutePosition();
+      const ray = new Ray(center.add(normal.scale(0.3)), normal.scale(-1), 0.6);
+      const pick = scene.pickWithRay(ray, (mesh) => mesh === pane);
+      assert(pick?.hit, `${pane.name}: pane must remain pickable after the static merge`);
+      for (let hit = 1; hit <= (laminated ? 3 : 1); hit++) {
+        pane.metadata.instance.hitGlass(pane, pick, effects);
+        assert(pane.isEnabled() === (laminated && hit < 3), `${pane.name}: wrong break timing on hit ${hit}`);
+      }
+      assert(!pane.isPickable, `${pane.name}: broken glass must not intercept bullets`);
+      pane.metadata.instance.hitGlass(pane, pick, effects);
+    }
+    scene.render();
+    return { panes: panes.length, cracks, breaks };
+  });
+  expect(result).toEqual({ panes: 9, cracks: 6, breaks: 9 });
+});
+
+test("vehicle detail stays merged and within budget in every graphics mode", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await ready(page);
+  const result = await page.evaluate(async () => {
+    const g = window.__game;
+    g.engine.stopRenderLoop();
+    const assert = (value, message) => {
+      if (!value) throw Error(message);
+    };
+    const materials = g.scene.materials.filter((mat) =>
+      /^(vehicle|carBodyMat|carTrimDarkMat|carSteelMat|carLampMat|carTailLampMat|carInstrumentsMat|truckInstrumentsMat|truckCabPaintMat|truckCargoPaintMat)/.test(
+        mat.name
+      )
+    );
+    const meshes = g.scene.meshes.filter((mesh) => materials.includes(mesh.material) && mesh.getTotalVertices() > 0);
+    const textures = () => new Set(materials.flatMap((mat) => mat.getActiveTextures()).filter((tex) => !tex.isCube));
+    const originalTextures = textures();
+    const textureBytes = [...originalTextures].reduce((bytes, tex) => {
+      const { width, height } = tex.getSize();
+      return bytes + (width * height * 4 * 4) / 3; // RGBA plus the mip chain.
+    }, 0);
+    const vertices = meshes.reduce((count, mesh) => count + mesh.getTotalVertices(), 0);
+    assert(vertices < 50000, `Vehicle geometry exceeded 50,000 vertices: ${vertices}`);
+    assert(textureBytes < 10 * 1024 ** 2, `Vehicle surface textures exceeded 10 MiB: ${textureBytes}`);
+    assert(meshes.length <= 24, `Vehicle dressing exceeded 24 static meshes: ${meshes.length}`);
+    assert(
+      materials.every((mat) => meshes.filter((mesh) => mesh.material === mat).length === 1),
+      "Vehicle parts must merge by material"
+    );
+    const qualities = [];
+    for (const quality of ["high", "balanced", "performance"]) {
+      g.postfx.setQuality(quality, false);
+      g.engine.stopRenderLoop();
+      for (let frame = 0; frame < 60; frame++) {
+        g.engine.beginFrame();
+        g.scene.render();
+        g.engine.endFrame();
+        if (meshes.every((mesh) => mesh.isReady(true))) break;
+        await new Promise((resolve) => setTimeout(resolve, 35));
+      }
+      assert(g.postfx.currentQuality === quality, `Failed to select ${quality}`);
+      assert(
+        meshes.every((mesh) => mesh.isReady(true)),
+        `Vehicle shaders failed in ${quality}`
+      );
+      const currentTextures = textures();
+      assert(
+        currentTextures.size === originalTextures.size && [...currentTextures].every((tex) => originalTextures.has(tex)),
+        `Switching to ${quality} duplicated vehicle textures`
+      );
+      qualities.push(quality);
+    }
+    assert(g.postfx.frameRateLimit === 60, "Fast must retain its 60 FPS limit");
+    return { meshes: meshes.length, vertices, textureMiB: textureBytes / 1024 ** 2, qualities };
+  });
+  expect(result.qualities).toEqual(["high", "balanced", "performance"]);
+  await testInfo.attach("vehicle-rendering-budget", {
+    body: Buffer.from(JSON.stringify(result, null, 2)),
+    contentType: "application/json",
+  });
+});
+
 test("slow soldier downloads keep Start disabled", async ({ page }) => {
   let release;
   const gate = new Promise((resolve) => {

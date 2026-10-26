@@ -755,7 +755,8 @@ export class WorldMaterials {
   }
 
   // Weathered factory paint for the abandoned car: faded petrol blue with
-  // door seams, chipped edges, rust freckles and rain-streak grime
+  // chipped edges, rust freckles and rain-streak grime. Panel gaps belong
+  // to the geometry so they don't repeat across the hood, roof and trunk.
   public createCarBodyMaterial(): PBRMaterial {
     return canvasMat(this.scene, "carBodyMat", 512, { rough: 0.32, metal: 0.55, wet: 0.5, bump: 0.9 }, (ctx, s) => {
       // wet clear-coat glint
@@ -770,17 +771,6 @@ export class WorldMaterials {
       sheen.addColorStop(1, "rgba(0,0,0,0.16)");
       ctx.fillStyle = sheen;
       ctx.fillRect(0, 0, s, s);
-
-      // door seams + wheel-arch shadows read as panel breaks
-      ctx.globalAlpha = 0.6;
-      ctx.strokeStyle = "#22313a";
-      ctx.lineWidth = 2;
-      for (const x of [s * 0.33, s * 0.62, s * 0.88]) {
-        ctx.beginPath();
-        ctx.moveTo(x, s * 0.1);
-        ctx.lineTo(x, s);
-        ctx.stroke();
-      }
 
       // rust freckles concentrated low + chipped bright primer specks
       paintNoise(ctx, s, ["#6e4a2f", "#5c3e28"], 50, 1, 4, 0.45);
@@ -894,7 +884,7 @@ export class WorldMaterials {
     return mat;
   }
 
-  // Four wall strips share one atlas. Each strip has four curated pieces
+  // Four wall strips share one atlas. Each strip has four Buddha quotations
   // rather than repeating the same square stamp six times along every wall.
   // The long faces choose a strip in ShipBoxMap; the small faces sample its
   // quiet left margin. 8px vertical gutters keep neighbouring walls out of
@@ -939,21 +929,26 @@ export class WorldMaterials {
     };
 
     // Hand-drawn closed glyphs and marker strokes avoid platform fonts and
-    // give the broad pieces, round throw-ups and small signatures distinct
+    // give the broad pieces, round lettering and brushed quotations distinct
     // silhouettes. Counters are filled with the even-odd rule.
     const blocks: Record<string, string> = {
       A: "M0 118L24 4L63 0L91 114L65 120L57 87L27 89L22 119Z M35 67L53 65L44 28Z",
+      B: "M8 4L65 0L87 17L82 47L68 58L88 72L83 101L65 117L0 120Z M32 27L30 48L56 46L61 27Z M28 73L26 94L57 91L61 72Z",
       C: "M84 5L80 29L32 26L25 87L78 87L88 112L11 120L0 100L5 19L23 0Z",
       D: "M8 4L64 0L88 22L84 96L66 117L0 120Z M30 28L25 92L55 90L62 76L64 40L54 27Z",
       E: "M8 4L87 0L81 27L33 30L31 48L73 45L68 71L28 72L26 94L85 87L79 115L0 120Z",
       F: "M8 3L90 0L82 29L34 28L31 49L74 44L69 73L28 74L24 118L0 120Z",
+      G: "M24 0L83 4L78 30L34 27L27 90L59 89L61 73L44 73L47 51L89 49L83 100L66 118L15 120L0 100L7 21Z",
       H: "M7 4L34 0L30 44L61 42L66 0L90 7L81 118L56 120L59 72L28 74L24 119L0 115Z",
       I: "M7 4L85 0L83 26L59 30L55 91L84 89L78 115L0 120L4 96L27 93L32 30L5 32Z",
+      J: "M33 4L91 0L84 27L68 28L62 98L44 117L13 120L0 101L4 77L27 74L27 94L39 92L44 29L30 29Z",
       K: "M9 3L35 0L31 46L67 0L94 10L55 59L88 110L61 120L28 77L23 116L0 120Z",
       L: "M9 3L36 0L27 92L85 86L82 114L0 120Z",
       M: "M7 6L34 0L47 44L68 2L94 7L88 119L62 116L66 54L46 84L29 53L25 120L0 117Z",
       N: "M8 4L32 0L61 66L68 0L93 5L82 119L59 120L29 55L24 115L0 119Z",
       O: "M22 0L71 3L91 24L84 99L66 118L16 120L0 99L6 21Z M32 29L27 89L55 91L63 79L67 32Z",
+      P: "M8 4L73 0L91 21L84 62L62 79L28 80L24 118L0 120Z M34 28L31 55L59 52L64 29Z",
+      Q: "M22 0L71 3L91 24L84 99L65 118L16 120L0 99L6 21Z M32 29L27 89L55 91L63 79L67 32Z M53 75L73 73L96 109L75 122Z",
       R: "M8 4L72 0L91 20L83 63L62 76L90 110L63 120L34 80L27 80L23 116L0 120Z M34 28L30 54L59 50L64 28Z",
       S: "M23 0L88 4L80 31L33 28L29 47L70 49L89 66L80 102L64 119L0 116L5 88L55 92L59 74L18 71L2 53L9 16Z",
       T: "M4 6L94 0L87 31L60 32L53 118L27 120L34 35L0 36Z",
@@ -962,20 +957,30 @@ export class WorldMaterials {
       W: "M0 7L27 0L32 76L49 33L64 73L77 0L103 6L80 115L55 120L44 85L31 119L9 115Z",
       X: "M1 9L28 0L47 38L69 0L96 8L65 59L89 110L62 120L44 82L21 120L0 111L27 59Z",
       Y: "M0 9L27 0L45 38L69 0L96 8L57 69L52 116L25 120L30 71Z",
+      Z: "M8 4L94 0L89 27L34 91L84 87L80 115L0 120L4 95L59 30L3 33Z",
+      ".": "M30 98L51 96L49 118L28 120Z",
+      ",": "M32 95L54 94L48 119L32 133L23 125L34 114Z",
+      "?": "M9 9L30 0L69 2L89 21L84 51L58 70L54 86L30 88L33 59L58 43L61 27L35 25L31 42L6 40Z M29 99L52 97L50 119L27 120Z",
+      "!": "M33 3L60 0L50 86L28 88Z M27 100L51 98L49 119L25 120Z",
     };
     const strokes: Record<string, string> = {
       A: "M4 110L38 5Q42 -3 48 7L78 110M19 67L67 62",
+      B: "M10 111L18 10Q80 -7 76 33Q74 54 15 60Q88 42 78 85Q74 116 10 111",
       C: "M78 15Q32 -15 13 23Q-3 54 9 94Q23 128 77 102",
       D: "M13 111L17 8Q79 -6 80 53Q82 110 13 111",
       E: "M78 9L18 14L9 109L77 102M15 59L64 55",
       F: "M11 110L20 13L79 8M16 58L67 53",
+      G: "M78 15Q32 -15 13 23Q-3 54 9 94Q23 128 73 103L78 62L43 66",
       H: "M16 9L8 111M77 5L69 108M12 61L72 54",
       I: "M10 12L75 6M43 11L35 109M4 113L70 105",
+      J: "M30 13L85 6M65 9L57 88Q50 126 17 106L7 91",
       K: "M18 8L9 112M81 3L14 64L77 107",
       L: "M20 7L10 110L79 103",
       M: "M7 111L16 10L42 66L72 7L76 110",
       N: "M9 111L17 8L70 104L78 3",
       O: "M43 6Q2 8 7 66Q6 117 46 111Q84 106 81 51Q82 -1 43 6Z",
+      P: "M10 112L18 11Q80 -6 78 36Q76 67 15 63",
+      Q: "M43 6Q2 8 7 66Q6 117 46 111Q84 106 81 51Q82 -1 43 6ZM48 78L82 115",
       R: "M10 112L18 11Q80 -6 78 36Q76 63 15 61M38 59L77 106",
       S: "M79 15Q37 -11 15 19Q-6 49 43 59Q94 69 70 101Q49 125 5 101",
       T: "M4 15L85 5M48 11L36 113",
@@ -984,15 +989,16 @@ export class WorldMaterials {
       W: "M4 10L17 109L45 49L63 106L88 2",
       X: "M8 13L74 104M79 2L4 116",
       Y: "M6 10L39 56L81 2M39 56L30 113",
-      "2": "M7 28Q38 -14 72 10Q97 37 12 107L82 102",
-      "3": "M7 13Q73 -7 78 30Q80 52 39 57Q91 50 78 91Q66 122 4 102",
-      "6": "M73 8Q18 14 9 76Q1 125 55 108Q89 101 74 64Q65 39 13 69",
-      "7": "M4 16L84 7L27 112M18 58L61 53",
-      "9": "M71 59Q15 86 9 35Q6 -5 58 8Q92 18 71 83L47 113",
+      Z: "M6 15L83 6L8 110L79 103",
+      ".": "M40 108L41 108",
+      ",": "M43 101L31 123",
+      "?": "M9 27Q24 -3 57 8Q92 22 65 48L41 67L38 82M36 108L37 108",
+      "!": "M50 8L41 81M37 108L38 108",
     };
 
     type Piece = {
       word: string;
+      verse: number;
       style: "angular" | "bubble" | "marker";
       x: number;
       y: number;
@@ -1001,11 +1007,14 @@ export class WorldMaterials {
       top: string;
       bottom: string;
       edge: string;
-      accent?: string;
     };
+    // Excerpts from the Dhammapada, F. Max Muller's public-domain translation.
+    // https://www.gutenberg.org/files/2017/2017-h/2017-h.htm
+    // Explicit line breaks keep the wording intact and legible on each wall panel.
     const pieces: Piece[] = [
       {
-        word: "RIFT",
+        word: "HATRED CEASES BY LOVE,\nTHIS IS AN OLD RULE.",
+        verse: 5,
         style: "angular",
         x: 365,
         y: 142,
@@ -1014,10 +1023,10 @@ export class WorldMaterials {
         top: "#e9ad61",
         bottom: "#b85b38",
         edge: "#eee0bf",
-        accent: "76",
       },
       {
-        word: "VEX",
+        word: "A TAMED MIND\nBRINGS HAPPINESS.",
+        verse: 35,
         style: "marker",
         x: 445,
         y: 151,
@@ -1028,7 +1037,8 @@ export class WorldMaterials {
         edge: "#a5a197",
       },
       {
-        word: "ECHO",
+        word: "THOUGHTS WELL GUARDED\nBRING HAPPINESS.",
+        verse: 36,
         style: "bubble",
         x: 402,
         y: 135,
@@ -1037,10 +1047,10 @@ export class WorldMaterials {
         top: "#9ebcb1",
         bottom: "#3d7b7e",
         edge: "#ded7c2",
-        accent: "93",
       },
       {
-        word: "SILO",
+        word: "AS A SOLID ROCK IS NOT\nSHAKEN BY THE WIND,\nWISE PEOPLE FALTER NOT\nAMIDST BLAME AND PRAISE.",
+        verse: 81,
         style: "angular",
         x: 354,
         y: 143,
@@ -1051,7 +1061,8 @@ export class WorldMaterials {
         edge: "#343e46",
       },
       {
-        word: "KENO",
+        word: "HAPPINESS IS THE\nOUTCOME OF GOOD.",
+        verse: 118,
         style: "bubble",
         x: 412,
         y: 137,
@@ -1060,10 +1071,10 @@ export class WorldMaterials {
         top: "#a8bacc",
         bottom: "#4c719d",
         edge: "#e2ddc7",
-        accent: "SOL",
       },
       {
-        word: "YARD",
+        word: "DO NOT SPEAK HARSHLY\nTO ANYBODY.",
+        verse: 133,
         style: "marker",
         x: 280,
         y: 146,
@@ -1074,7 +1085,8 @@ export class WorldMaterials {
         edge: "#696e65",
       },
       {
-        word: "WAVE",
+        word: "GOOD PEOPLE\nFASHION THEMSELVES.",
+        verse: 145,
         style: "angular",
         x: 408,
         y: 134,
@@ -1083,10 +1095,10 @@ export class WorldMaterials {
         top: "#789bb0",
         bottom: "#3d617e",
         edge: "#c8caba",
-        accent: "27",
       },
       {
-        word: "SOL",
+        word: "LET EACH MAN DIRECT\nHIMSELF FIRST TO\nWHAT IS PROPER.",
+        verse: 158,
         style: "marker",
         x: 510,
         y: 154,
@@ -1097,7 +1109,8 @@ export class WorldMaterials {
         edge: "#aaa69b",
       },
       {
-        word: "NOX",
+        word: "SELF IS THE LORD\nOF SELF, WHO ELSE\nCOULD BE THE LORD?",
+        verse: 160,
         style: "angular",
         x: 319,
         y: 141,
@@ -1106,10 +1119,10 @@ export class WorldMaterials {
         top: "#b8a5b7",
         bottom: "#79627e",
         edge: "#dbd1bc",
-        accent: "VEX",
       },
       {
-        word: "LARK",
+        word: "PURITY AND IMPURITY\nBELONG TO ONESELF,\nNO ONE CAN\nPURIFY ANOTHER.",
+        verse: 165,
         style: "bubble",
         x: 426,
         y: 145,
@@ -1120,7 +1133,8 @@ export class WorldMaterials {
         edge: "#d9d4bb",
       },
       {
-        word: "DRFT",
+        word: "HIS OWN MISDEEDS\nAND NEGLIGENCES\nSHOULD A SAGE\nTAKE NOTICE OF.",
+        verse: 50,
         style: "marker",
         x: 318,
         y: 155,
@@ -1131,7 +1145,8 @@ export class WorldMaterials {
         edge: "#96998c",
       },
       {
-        word: "HOME",
+        word: "LET US LIVE HAPPILY THEN,\nNOT HATING THOSE\nWHO HATE US!",
+        verse: 197,
         style: "angular",
         x: 443,
         y: 136,
@@ -1140,10 +1155,10 @@ export class WorldMaterials {
         top: "#d7d0b9",
         bottom: "#a39a83",
         edge: "#405c64",
-        accent: "69",
       },
       {
-        word: "NOVA",
+        word: "VICTORY BREEDS HATRED,\nFOR THE CONQUERED\nIS UNHAPPY.",
+        verse: 201,
         style: "marker",
         x: 388,
         y: 135,
@@ -1154,7 +1169,8 @@ export class WorldMaterials {
         edge: "#b5b2a5",
       },
       {
-        word: "HUSH",
+        word: "HEALTH IS THE\nGREATEST OF GIFTS.",
+        verse: 204,
         style: "bubble",
         x: 373,
         y: 142,
@@ -1163,10 +1179,10 @@ export class WorldMaterials {
         top: "#c7a293",
         bottom: "#9b6056",
         edge: "#d6d0b8",
-        accent: "LARK",
       },
       {
-        word: "DOCK",
+        word: "LET A MAN OVERCOME\nANGER BY LOVE.",
+        verse: 223,
         style: "angular",
         x: 429,
         y: 131,
@@ -1177,7 +1193,8 @@ export class WorldMaterials {
         edge: "#36474b",
       },
       {
-        word: "NOVA",
+        word: "YOU YOURSELF MUST\nMAKE AN EFFORT.",
+        verse: 276,
         style: "marker",
         x: 507,
         y: 150,
@@ -1189,17 +1206,29 @@ export class WorldMaterials {
       },
     ];
 
+    const advance = (letter: string, step: number): number => {
+      if (letter === " ") return step * 0.75;
+      return ".,?!".includes(letter) ? step * 0.55 : step;
+    };
+    const lineWidth = (word: string, step: number): number =>
+      [...word].reduce((width, letter) => width + advance(letter, step), 0);
+
     const drawWord = (piece: Piece): void => {
       const marker = piece.style === "marker";
       const round = piece.style === "bubble";
       const source = marker || round ? strokes : blocks;
       const word = new Path2D();
       const step = marker ? 69 : 89;
-      const wordW = (piece.word.length - 1) * step + 88;
+      const wordW = lineWidth(piece.word, step);
+      let cursor = -wordW / 2;
       for (let i = 0; i < piece.word.length; i++) {
-        const glyph = new Path2D(source[piece.word[i]] ?? source.X);
-        const tilt = [0.02, -0.015, 0.035, -0.025][i % 4];
-        word.addPath(glyph, new DOMMatrix([1, tilt, -0.055, 1, i * step - wordW / 2, -59 + [0, 3, -2, 1][i % 4]]));
+        const letter = piece.word[i];
+        if (letter !== " ") {
+          const glyph = new Path2D(source[letter]);
+          const tilt = [0.02, -0.015, 0.035, -0.025][i % 4];
+          word.addPath(glyph, new DOMMatrix([1, tilt, -0.055, 1, cursor, -59 + [0, 3, -2, 1][i % 4]]));
+        }
+        cursor += advance(letter, step);
       }
 
       ctx.save();
@@ -1210,23 +1239,14 @@ export class WorldMaterials {
       ctx.lineCap = "round";
       if (marker) {
         ctx.transform(1, 0, -0.22, 1, 0, 0);
-        ctx.globalAlpha = 0.33;
+        ctx.globalAlpha = 0.6;
         ctx.strokeStyle = piece.edge;
-        ctx.lineWidth = 9;
+        ctx.lineWidth = 13;
         ctx.stroke(word);
         ctx.globalAlpha = 0.84;
         ctx.strokeStyle = piece.top;
-        ctx.lineWidth = 5;
+        ctx.lineWidth = 7;
         ctx.stroke(word);
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(-wordW * 0.58, 73);
-        ctx.bezierCurveTo(-wordW * 0.08, 57, wordW * 0.4, 91, wordW * 0.66, 62);
-        ctx.moveTo(wordW * 0.5, -50);
-        ctx.lineTo(wordW * 0.58, -64);
-        ctx.moveTo(wordW * 0.6, -47);
-        ctx.lineTo(wordW * 0.68, -61);
-        ctx.stroke();
       } else {
         const fill = ctx.createLinearGradient(0, -70, 18, 65);
         fill.addColorStop(0, piece.top);
@@ -1272,6 +1292,29 @@ export class WorldMaterials {
       ctx.restore();
     };
 
+    const drawQuote = (piece: Piece): void => {
+      const lines = piece.word.split("\n");
+      const step = piece.style === "marker" ? 69 : 89;
+      const widest = Math.max(...lines.map((line) => lineWidth(line, step)));
+      // Fit both axes, including the broad paint outlines and the verse credit.
+      const size = Math.min(58, (650 * 120) / (widest + 80), 148 / (lines.length * 1.22));
+      const spacing = size * 1.22;
+      const halfHeight = ((lines.length - 1) * spacing) / 2;
+      ctx.save();
+      ctx.translate(panelW / 2, 118);
+      ctx.rotate(piece.angle);
+      lines.forEach((word, i) => {
+        drawWord({ ...piece, word, x: 0, y: i * spacing - halfHeight, size, angle: 0 });
+      });
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#293b32";
+      ctx.font = "bold 15px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`BUDDHA / DHAMMAPADA ${piece.verse}`, 0, halfHeight + size * 0.65 + 25);
+      ctx.restore();
+    };
+
     for (let row = 0; row < 4; row++) {
       ctx.save();
       ctx.translate(0, row * panelH);
@@ -1306,8 +1349,8 @@ export class WorldMaterials {
         ctx.save();
         ctx.translate(col * 512, 0);
         ctx.scale(512 / panelW, 1);
-        // Buff paint and an almost-erased older signature sit behind the
-        // new piece. Their off-centre placements leave useful empty wall.
+        // Older buff paint sits behind the quotation; no unrelated tags
+        // or signatures remain on the wall.
         ctx.globalAlpha = piece.style === "marker" ? 0.3 : 0.17;
         ctx.fillStyle = col % 2 ? "#b2b1a3" : "#757e72";
         ctx.beginPath();
@@ -1337,13 +1380,13 @@ export class WorldMaterials {
             ctx.fillRect(piece.x + Math.cos(a) * r * 230, piece.y + Math.sin(a) * r * 76, 1 + random() * 2, 1);
           }
         }
-        drawWord(piece);
+        drawQuote(piece);
 
         // A few gravity-led paint runs, placed below the actual lettering.
         if (piece.style !== "marker") {
           for (let i = 0; i < 3; i++) {
             const x = piece.x - 115 + i * 105 + random() * 20;
-            const y = piece.y + piece.size * 0.39;
+            const y = 203;
             const len = 9 + random() * 18;
             ctx.globalAlpha = 0.62;
             ctx.strokeStyle = i % 2 ? piece.bottom : "#303830";
@@ -1354,19 +1397,6 @@ export class WorldMaterials {
             ctx.lineTo(x + 0.8, Math.min(237, y + len));
             ctx.stroke();
           }
-        }
-        if (piece.accent) {
-          drawWord({
-            ...piece,
-            word: piece.accent,
-            style: "marker",
-            x: 651,
-            y: 61,
-            size: 25,
-            angle: -0.09,
-            top: "#343c34",
-            edge: "#a4a99a",
-          });
         }
         // Flaked paint, concrete pinholes and one hairline crack unify the
         // layers without turning every letter into a distressed blur.
@@ -1422,7 +1452,7 @@ export class WorldMaterials {
     return flatMat(this.scene, name, { albedo: [0.7, 0.71, 0.73], rough: 0.78, tex });
   }
 
-  // "MERIDIAN FREIGHT" — a container-line advert: bold diagonal stripe, a
+  // "MISPLACED FREIGHT" — a container-line advert: bold diagonal stripe, a
   // stacked-container silhouette under a crane, heavy grotesque lettering
   private static paintFreightPoster(ctx: CanvasRenderingContext2D, w: number, h: number): void {
     ctx.fillStyle = "#d8cfb8";
@@ -1487,20 +1517,18 @@ export class WorldMaterials {
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
     ctx.font = `900 ${Math.round(h * 0.11)}px "Arial Black", Impact, sans-serif`;
-    ctx.fillText("MERIDIAN", w * 0.06, h * 0.17);
-    ctx.fillText("FREIGHT", w * 0.06, h * 0.28);
+    ctx.fillText("MISPLACED", w * 0.06, h * 0.17, w * 0.88);
+    ctx.fillText("FREIGHT", w * 0.06, h * 0.28, w * 0.88);
     ctx.fillStyle = "#b8352b";
     ctx.font = `700 ${Math.round(h * 0.034)}px Arial, sans-serif`;
-    ctx.fillText("PORT TO PORT · RAIN OR SHINE", w * 0.06, h * 0.33);
+    ctx.fillText("IT'S NOT LOST. IT'S ON TOUR.", w * 0.06, h * 0.33, w * 0.88);
     ctx.fillStyle = "#1f2a35";
     ctx.font = `700 ${Math.round(h * 0.03)}px Arial, sans-serif`;
-    ctx.textAlign = "right";
-    ctx.fillText("EST. 1974", w * 0.94, h * 0.95);
-    ctx.textAlign = "left";
-    ctx.fillText("40' HIGH-CUBE · REEFER · FLAT RACK", w * 0.06, h * 0.95);
+    ctx.fillText("TRACKING: VIBES ONLY.", w * 0.06, h * 0.915, w * 0.88);
+    ctx.fillText("DELIVERY DATE: A SURPRISE.", w * 0.06, h * 0.95, w * 0.88);
   }
 
-  // "SIGNAL 98.3" — a dockside radio poster: halftone sunburst, a bold
+  // "PANIC FM 98.3" — a dockside radio poster: halftone sunburst, a bold
   // numeral, and a broadcast mast throwing rings
   private static paintRadioPoster(ctx: CanvasRenderingContext2D, w: number, h: number): void {
     const sky = ctx.createLinearGradient(0, 0, 0, h);
@@ -1552,13 +1580,14 @@ export class WorldMaterials {
     ctx.fillStyle = "#f2e6c8";
     ctx.textAlign = "center";
     ctx.font = `900 ${Math.round(h * 0.2)}px "Arial Black", Impact, sans-serif`;
-    ctx.fillText("98.3", w * 0.5, h * 0.9);
+    ctx.fillText("98.3", w * 0.5, h * 0.9, w * 0.88);
     ctx.font = `900 ${Math.round(h * 0.07)}px "Arial Black", Impact, sans-serif`;
     ctx.fillStyle = "#e9be5c";
-    ctx.fillText("SIGNAL", w * 0.5, h * 0.2);
+    ctx.fillText("PANIC FM", w * 0.5, h * 0.2, w * 0.88);
     ctx.font = `700 ${Math.round(h * 0.026)}px Arial, sans-serif`;
     ctx.fillStyle = "#f2e6c8";
-    ctx.fillText("ALL NIGHT · ALL WEATHER · DOCKSIDE", w * 0.5, h * 0.25);
+    ctx.fillText("THE VOICES ARE PROBABLY US.", w * 0.5, h * 0.25, w * 0.88);
+    ctx.fillText("ALL ADS. OCCASIONAL MUSIC.", w * 0.5, h * 0.955, w * 0.88);
   }
 
   // Rain-yard weathering shared by both prints: desaturate toward the
